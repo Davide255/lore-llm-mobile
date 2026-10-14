@@ -6,6 +6,7 @@ import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture
 import { showActionSheet } from './action-sheet';
 import { confirmDelete, entryMenu } from './entry-actions';
 import { Icon, sf, type IconName } from './icon';
+import { AgentAvatar } from './identity';
 import { Cell, IconWell } from './ui';
 import type { Entry } from '@/api';
 import { fileSize, plural, relativeTime } from '@/lib/format';
@@ -57,7 +58,11 @@ export function EntryRow({
       ? [plural(entry.fileCount, 'file', 'file'), entry.folderCount ? plural(entry.folderCount, 'sottocartella', 'sottocartelle') : null]
           .filter(Boolean)
           .join(' · ')
-      : `${fileSize(entry.size)} · ${relativeTime(entry.updatedAt)}`;
+      : entry.author === 'agent'
+        ? `${fileSize(entry.size)} · ${entry.agent?.name ?? 'Agente'} · ${relativeTime(entry.updatedAt)}`
+        : `${fileSize(entry.size)} · ${relativeTime(entry.updatedAt)}`;
+  // Files an agent wrote last carry its face, so agent edits stand out in a listing.
+  const defaultRight = isFile && entry.author === 'agent' ? <AgentAvatar agent={entry.agent} size={20} round /> : undefined;
 
   const cell = (
     <Cell
@@ -66,7 +71,7 @@ export function EntryRow({
       mono={isFile}
       strong={special}
       subtitle={subtitle ?? defaultSubtitle}
-      right={right}
+      right={right ?? defaultRight}
       chevron
       // On iOS the wrapping <Link asChild> injects onPress (and the native context menu).
       onPress={Platform.OS === 'ios' ? undefined : () => router.push(href)}

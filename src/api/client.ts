@@ -1,9 +1,9 @@
 import type {
   Agent,
-  AgentPermission,
+  AgentPatch,
   ActivityEvent,
   Change,
-  ConnectionInfo,
+  CreateAgentInput,
   CreateFileInput,
   CreateProjectInput,
   DeleteReceipt,
@@ -11,6 +11,7 @@ import type {
   FolderListing,
   KBSettings,
   KBSummary,
+  NewAgent,
   Project,
   RecentFile,
   SearchResponse,
@@ -18,8 +19,8 @@ import type {
 
 /**
  * Everything the app needs from the backend. The UI only talks to this
- * interface (through `src/data/hooks.ts`), so swapping the mock for the real
- * HTTP client is a one-line change in `src/api/index.ts`.
+ * interface (through `src/data/hooks.ts`); `CloudKnowledgeBaseClient`
+ * implements it on top of the lore-llm Worker.
  */
 export interface KnowledgeBaseClient {
   // Browse
@@ -52,31 +53,25 @@ export interface KnowledgeBaseClient {
   addRecentSearch(query: string): Promise<void>;
   removeRecentSearch(query: string): Promise<void>;
 
-  // Agents
+  // Agents (permissions live on the server; tokens are shown once)
   listAgents(): Promise<Agent[]>;
   getAgent(id: string): Promise<Agent>;
-  setAgentPermission(id: string, permission: AgentPermission): Promise<Agent>;
-  disconnectAgent(id: string): Promise<void>;
-  createConnection(): Promise<ConnectionInfo>;
+  createAgent(input: CreateAgentInput): Promise<NewAgent>;
+  updateAgent(id: string, patch: AgentPatch): Promise<Agent>;
+  /** The agent's token stops working immediately; its changes stay in the log. */
+  revokeAgent(id: string): Promise<void>;
+  /** Files agents created, changed or deleted, newest first. */
   listActivity(): Promise<ActivityEvent[]>;
   getChange(id: string): Promise<Change>;
-  /** Restores the file to `change.before` and pauses index regeneration for 1h. */
+  /** Puts the file back as it was before the agent's change. */
   revertChange(id: string): Promise<void>;
 
   // Settings
   getSettings(): Promise<KBSettings>;
-  updateSettings(patch: Partial<KBSettings>): Promise<KBSettings>;
   sync(): Promise<KBSettings>;
 
-  /**
-   * Server-pushed changes (e.g. index.md recompiled, an agent wrote a file).
-   * The HTTP client will back this with SSE; the mock fires it after its
-   * simulated background jobs. Returns an unsubscribe function.
-   */
+  /** Changes noticed in the background (agent writes). Returns an unsubscribe function. */
   subscribe(listener: (event: ServerEvent) => void): () => void;
 }
 
-export type ServerEvent =
-  | { type: 'index-regenerating'; project: string }
-  | { type: 'index-regenerated'; project: string }
-  | { type: 'changed'; paths: string[] };
+export type ServerEvent = { type: 'changed'; paths: string[] };

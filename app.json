@@ -34,7 +34,8 @@
           "image": "./assets/images/lore-1c-glyph-combined.png",
           "imageWidth": 160
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

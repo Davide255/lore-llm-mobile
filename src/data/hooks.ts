@@ -1,8 +1,17 @@
 import { Alert } from 'react-native';
 
-import { KBError, kb, type AgentPermission, type CreateFileInput, type CreateProjectInput, type FileDocument, type KBSettings, type Project } from '@/api';
+import {
+  KBError,
+  kb,
+  type AgentPatch,
+  type CreateAgentInput,
+  type CreateFileInput,
+  type CreateProjectInput,
+  type FileDocument,
+  type Project,
+} from '@/api';
 import { toggleTaskAtLine } from '@/lib/markdown';
-import { createSignal, invalidate, setQueryData, useQuery } from './store';
+import { invalidate, setQueryData, useQuery } from './store';
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
@@ -25,23 +34,11 @@ export const useActivity = () => useQuery('activity', () => kb.listActivity());
 export const useChange = (id: string) => useQuery(`change:${id}`, () => kb.getChange(id));
 export const useSettings = () => useQuery('settings', () => kb.getSettings());
 
-// ─── Server-pushed state ─────────────────────────────────────────────────────
-
-const regenerating = createSignal<ReadonlySet<string>>(new Set());
+// ─── Background changes (agent writes) ──────────────────────────────────────
 
 kb.subscribe((e) => {
-  if (e.type === 'index-regenerating') regenerating.set(new Set(regenerating.get()).add(e.project));
-  if (e.type === 'index-regenerated') {
-    const next = new Set(regenerating.get());
-    next.delete(e.project);
-    regenerating.set(next);
-  }
   if (e.type === 'changed') invalidate();
 });
-
-export function useIndexRegenerating(project: string) {
-  return regenerating.useValue().has(project);
-}
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
 
@@ -82,15 +79,11 @@ export const actions = {
     return kb.removeRecentSearch(q);
   },
 
-  setAgentPermission: (id: string, p: AgentPermission) => mutate(() => kb.setAgentPermission(id, p)),
-  disconnectAgent: (id: string) => mutate(() => kb.disconnectAgent(id)),
-  createConnection: () => kb.createConnection(),
+  createAgent: (input: CreateAgentInput) => mutate(() => kb.createAgent(input)),
+  updateAgent: (id: string, patch: AgentPatch) => mutate(() => kb.updateAgent(id, patch)),
+  revokeAgent: (id: string) => mutate(() => kb.revokeAgent(id)),
   revertChange: (id: string) => mutate(() => kb.revertChange(id)),
 
-  updateSettings(patch: Partial<KBSettings>) {
-    setQueryData<KBSettings>('settings', (prev) => ({ ...(prev as KBSettings), ...patch }));
-    return mutate(() => kb.updateSettings(patch));
-  },
   sync: () => mutate(() => kb.sync()),
 };
 

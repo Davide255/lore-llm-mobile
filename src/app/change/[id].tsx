@@ -5,7 +5,7 @@ import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { HeaderItems } from '@/components/header-items';
 import { showToast } from '@/components/toast';
 import { ErrorState, HeaderTitle, Loading, Pill, Screen } from '@/components/ui';
-import { actions, attempt, useAgent, useChange } from '@/data/hooks';
+import { actions, attempt, useChange } from '@/data/hooks';
 import { diffLines, toHunks } from '@/lib/diff';
 import { relativeTime } from '@/lib/format';
 import { basename } from '@/lib/paths';
@@ -18,14 +18,15 @@ export default function ChangeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const change = useChange(id);
   const c = change.data;
-  const agent = useAgent(c?.agentId ?? '');
-  const hunks = useMemo(() => (c ? toHunks(diffLines(c.before, c.after)) : []), [c]);
+  const hunks = useMemo(() => (c ? toHunks(diffLines(c.before ?? '', c.after ?? '')) : []), [c]);
 
   const restore = () => {
     if (!c) return;
     Alert.alert(
       'Ripristinare la versione precedente?',
-      `${basename(c.path)} tornerà com’era prima della modifica di ${agent.data?.name ?? 'questo agente'}.`,
+      c.before === null
+        ? `${basename(c.path)} è stato creato da ${c.agent.name}: ripristinare lo elimina.`
+        : `${basename(c.path)} tornerà com’era prima della modifica di ${c.agent.name}.`,
       [
         { text: 'Annulla', style: 'cancel' },
         {
@@ -53,7 +54,7 @@ export default function ChangeScreen() {
         options={{
           headerTitle: () => (
             <HeaderTitle
-              title={`Modifica di ${agent.data?.name ?? '…'}`}
+              title={`Modifica di ${c?.agent.name ?? '…'}`}
               subtitle={c ? `${basename(c.path)} · ${relativeTime(c.at)}` : undefined}
               mono={false}
             />
@@ -68,7 +69,7 @@ export default function ChangeScreen() {
               label: 'Altro',
               icon: 'more',
               items: [
-                { label: 'Apri file', icon: 'doc', onPress: () => router.push(routes.file(c.path)) },
+                { label: 'Apri file', icon: 'doc', disabled: c.after === null, onPress: () => router.push(routes.file(c.path)) },
                 { label: 'Condividi diff', icon: 'share', onPress: shareDiff },
                 { label: 'Ripristina', icon: 'restore', destructive: true, disabled: !c.restorable, onPress: restore },
               ],
@@ -85,7 +86,8 @@ export default function ChangeScreen() {
           <View style={{ flexDirection: 'row', gap: 7, marginBottom: 14 }}>
             <Pill color={t.success} background={t.successSoft}>{`+${c.added} righe`}</Pill>
             <Pill color={t.error} background={t.errorSoft}>{`−${c.removed} righe`}</Pill>
-            {c.automatic && <Pill>automatica</Pill>}
+            {c.before === null && <Pill>nuovo file</Pill>}
+            {c.after === null && <Pill>eliminato</Pill>}
           </View>
 
           <View style={[styles.diff, { backgroundColor: t.cell }]}>
@@ -124,14 +126,17 @@ export default function ChangeScreen() {
               style={[styles.big, { backgroundColor: t.fill, opacity: c.restorable ? 1 : 0.4 }]}>
               <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Ripristina</Text>
             </Pressable>
-            <Pressable onPress={() => router.push(routes.file(c.path))} style={[styles.big, { backgroundColor: t.accent }]}>
+            <Pressable
+              disabled={c.after === null}
+              onPress={() => router.push(routes.file(c.path))}
+              style={[styles.big, { backgroundColor: t.accent, opacity: c.after === null ? 0.4 : 1 }]}>
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Apri file</Text>
             </Pressable>
           </View>
           <Text style={{ fontSize: 11.5, lineHeight: 17, color: t.textMuted, marginTop: 12, marginHorizontal: 6, textAlign: 'center' }}>
             {c.restorable
-              ? 'Il ripristino riporta il file alla versione precedente e blocca la rigenerazione per 1 ora.'
-              : 'Questa modifica non si può più ripristinare.'}
+              ? 'Il ripristino riporta il file alla versione precedente alla modifica.'
+              : 'Il file è cambiato dopo questa modifica: non si può più ripristinare.'}
           </Text>
         </Screen>
       )}

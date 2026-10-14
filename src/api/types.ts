@@ -1,3 +1,5 @@
+import type { AgentKind, AgentPermission, AgentRef } from './cloud/agents';
+
 /**
  * Domain types shared by the UI and every KnowledgeBaseClient implementation.
  *
@@ -14,6 +16,11 @@
  */
 
 export type ISODate = string;
+
+export type { AgentKind, AgentPermission, AgentRef };
+
+/** Who wrote the current version of a file: one of your apps, or an agent. */
+export type Author = 'you' | 'agent';
 
 /** Special role of a file inside a project. */
 export type FileRole = 'index' | 'checklist' | 'doc';
@@ -62,6 +69,9 @@ export interface FileEntry {
   /** Size in bytes. */
   size: number;
   updatedAt: ISODate;
+  author: Author;
+  /** The agent that wrote the current version (author = 'agent'). */
+  agent?: AgentRef;
 }
 
 export type Entry = FolderEntry | FileEntry;
@@ -88,8 +98,10 @@ export interface FileDocument {
   updatedAt: ISODate;
   /** Opaque version used for optimistic concurrency on writes. */
   version: string;
+  author: Author;
+  /** The agent that wrote the current version (author = 'agent'). */
+  agent?: AgentRef;
   /** index.md only. */
-  generatedAt?: ISODate;
   tokenCount?: number;
 }
 
@@ -135,63 +147,76 @@ export interface SearchResponse {
 
 // ─── Agents & activity ───────────────────────────────────────────────────────
 
-export type AgentPermission = 'read' | 'read-write';
-
+/** An agent registered on the Lore server (its token is shown only at creation). */
 export interface Agent {
   id: string;
+  /** Friendly name chosen by the user. */
   name: string;
-  initials: string;
-  /** Avatar background. null → neutral surface. */
-  color: string | null;
+  kind: AgentKind;
   permission: AgentPermission;
-  connectedAt: ISODate;
-  lastSeenAt: ISODate | null;
+  /** Project names, or ['*'] for every project. */
+  scope: string[];
+  createdAt: ISODate;
+  /** Its latest file modification in the audit log. */
+  lastWriteAt: ISODate | null;
 }
 
-export type ActivityKind = 'write' | 'create' | 'delete' | 'check' | 'read' | 'restore';
+export interface CreateAgentInput {
+  kind: AgentKind;
+  name: string;
+  permission: AgentPermission;
+  scope: string[];
+}
 
+export type AgentPatch = Partial<Pick<Agent, 'name' | 'kind' | 'permission' | 'scope'>>;
+
+/** A freshly created agent. The token is not stored anywhere: it is shown once. */
+export interface NewAgent {
+  agent: Agent;
+  token: string;
+  expiresAt: ISODate;
+  /** MCP endpoint (Streamable HTTP) the agent connects to. */
+  mcpUrl: string;
+}
+
+export type ActivityKind = 'write' | 'create' | 'delete';
+
+/** A file an agent created, changed or deleted (from the server's audit log). */
 export interface ActivityEvent {
   id: string;
-  agentId: string;
+  agent: AgentRef;
   kind: ActivityKind;
   project: string;
-  /** Target file (absent for multi-file reads). */
-  path: string | null;
+  path: string;
   at: ISODate;
-  /** Items checked (kind = check) or files read (kind = read). */
-  count?: number;
   added?: number;
   removed?: number;
-  /** Present when the event produced a reviewable change. */
+  /** Present when the app saw both versions, so the change has a diff. */
   changeId?: string;
 }
 
 export interface Change {
   id: string;
-  agentId: string;
+  agent: AgentRef;
   path: string;
   project: string;
   at: ISODate;
-  /** True when produced by automatic index compilation. */
-  automatic: boolean;
-  before: string;
-  after: string;
+  /** null: the agent created the file. */
+  before: string | null;
+  /** null: the agent deleted the file. */
+  after: string | null;
   added: number;
   removed: number;
+  /** The file is still as the agent left it, so it can be put back. */
   restorable: boolean;
-}
-
-export interface ConnectionInfo {
-  endpoint: string;
-  token: string;
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface KBSettings {
-  offlineAvailable: boolean;
-  regenerateIndexOnChange: boolean;
   lastSyncAt: ISODate | null;
+  /** Host of the Lore server the app talks to. */
+  server: string;
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────

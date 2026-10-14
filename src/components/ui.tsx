@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 
 import { Icon, type IconName } from './icon';
-import type { Agent } from '@/api';
 import { brand, fonts, useTheme } from '@/theme';
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -189,26 +188,6 @@ export function IconWell({
   return (
     <View style={[styles.well, { width: size, height: size, backgroundColor: background ?? t.iconWell }]}>
       <Icon name={name} size={size * 0.56} color={color ?? t.accentText} weight={filled ? 'semibold' : 'regular'} />
-    </View>
-  );
-}
-
-export function AgentAvatar({ agent, size = 32, round }: { agent: Pick<Agent, 'initials' | 'color'>; size?: number; round?: boolean }) {
-  const t = useTheme();
-  return (
-    <View
-      style={[
-        styles.well,
-        {
-          width: size,
-          height: size,
-          borderRadius: round ? size / 2 : 9,
-          backgroundColor: agent.color ?? t.iconWell,
-        },
-      ]}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: agent.color ? '#fff' : t.textSecondary }}>
-        {agent.initials}
-      </Text>
     </View>
   );
 }

@@ -6,7 +6,7 @@ import { EntryRow } from '@/components/entry-row';
 import { BottomAction, HeaderItems, type MenuItem } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { Banner, EmptyState, ErrorState, IconWell, Loading, Screen, Section } from '@/components/ui';
-import { useFolder, useIndexRegenerating } from '@/data/hooks';
+import { useFolder } from '@/data/hooks';
 import { relativeTime } from '@/lib/format';
 import { pathParam, routes } from '@/lib/routes';
 import { useTheme } from '@/theme';
@@ -17,7 +17,6 @@ export default function FolderScreen() {
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
   const folder = useFolder(path);
   const data = folder.data;
-  const regenerating = useIndexRegenerating(data?.project ?? '');
   const name = path.split('/').pop() ?? '';
   const isRoot = !path.includes('/');
 
@@ -61,7 +60,7 @@ export default function FolderScreen() {
                 <EntryRow
                   entry={data.index}
                   icon={<IconWell name="index" background={t.infoWell} color={t.info} />}
-                  subtitle={regenerating ? 'Rigenerazione in corso…' : 'Generato · sola lettura'}
+                  subtitle="Generato · sola lettura"
                   right={<Icon name="lock" size={13} color={t.textMuted} />}
                 />
               )}
@@ -90,9 +89,6 @@ export default function FolderScreen() {
           {empty && <EmptyState icon="doc" title="Cartella vuota" message="Usa + per creare un file o una cartella." />}
 
           <View style={{ marginTop: 18, gap: 10 }}>
-            {regenerating && (
-              <Banner icon="sync">Rigenerazione di index.md in corso…</Banner>
-            )}
             {!empty && (
               <Banner icon="swipe" tone="neutral">
                 Scorri una riga per rinominare o eliminare, tieni premuto per altre azioni. index.md non si modifica.

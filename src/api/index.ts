@@ -1,17 +1,14 @@
+import { CloudKnowledgeBaseClient } from './cloud/cloud-client';
 import type { KnowledgeBaseClient } from './client';
-import { MockKnowledgeBaseClient } from './mock/mock-client';
 
 export * from './types';
 export type { KnowledgeBaseClient, ServerEvent } from './client';
+export { AGENT_KIND_LIST } from './cloud/agents';
 
-/**
- * The single client instance used by the app.
- *
- * When the backend exists, replace with:
- *   new HttpKnowledgeBaseClient(process.env.EXPO_PUBLIC_KB_API_URL!, getAccessToken)
- */
-const mock = new MockKnowledgeBaseClient();
-export const kb: KnowledgeBaseClient = mock;
+const cloud = new CloudKnowledgeBaseClient();
 
-/** Dev-only helper exposed in Settings while the mock is active. */
-export const resetDemoData: (() => Promise<void>) | null = kb === mock ? () => mock.resetDemoData() : null;
+/** The single client instance used by the app: the signed-in user's space on the Lore server. */
+export const kb: KnowledgeBaseClient = cloud;
+
+/** Point the client at the signed-in user's space (null after sign-out). */
+export const setKnowledgeBaseUser = (id: string | null) => cloud.setUser(id);

@@ -4,8 +4,9 @@ import { RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 
 import { HeaderItems } from '@/components/header-items';
 import { MarkdownView } from '@/components/markdown';
+import { AgentAvatar } from '@/components/identity';
 import { Banner, ErrorState, HeaderTitle, Loading, ProgressBar, Screen } from '@/components/ui';
-import { actions, attempt, useFile, useIndexRegenerating } from '@/data/hooks';
+import { actions, attempt, useFile } from '@/data/hooks';
 import { fileSize, relativeTime, thousands } from '@/lib/format';
 import { checklistProgress } from '@/lib/markdown';
 import { pathParam, routes } from '@/lib/routes';
@@ -17,7 +18,6 @@ export default function FileScreen() {
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
   const file = useFile(path);
   const doc = file.data;
-  const regenerating = useIndexRegenerating(doc?.project ?? '');
 
   useEffect(() => {
     actions.markOpened(path).catch(() => {});
@@ -54,8 +54,16 @@ export default function FileScreen() {
           refreshControl={<RefreshControl refreshing={file.refreshing} onRefresh={file.refresh} />}>
           {doc.role === 'index' && (
             <Banner icon="lock" style={{ marginBottom: 18 }}>
-              Indice compilato dagli agenti. Non modificabile.
+              Indice generato automaticamente. Non modificabile.
             </Banner>
+          )}
+          {doc.author === 'agent' && (
+            <View style={styles.editedBy}>
+              <AgentAvatar agent={doc.agent} size={18} round />
+              <Text style={{ fontSize: 12, color: t.textSecondary, flexShrink: 1 }} numberOfLines={1}>
+                Modificato da {doc.agent?.name ?? 'un agente'} · {relativeTime(doc.updatedAt)}
+              </Text>
+            </View>
           )}
           {progress && progress.total > 0 && <ProgressBar value={progress.done / progress.total} height={5} style={{ marginBottom: 16 }} />}
 
@@ -73,9 +81,7 @@ export default function FileScreen() {
             <>
               <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />
               <Text style={{ fontSize: 12, color: t.textMuted }}>
-                {regenerating
-                  ? 'Rigenerazione in corso…'
-                  : `Rigenerato ${relativeTime(doc.generatedAt ?? doc.updatedAt)} · ${thousands(doc.tokenCount ?? 0)} token`}
+                {`Rigenerato ${relativeTime(doc.updatedAt)} · ${thousands(doc.tokenCount ?? 0)} token`}
               </Text>
             </>
           )}
@@ -84,3 +90,7 @@ export default function FileScreen() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  editedBy: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 14 },
+});

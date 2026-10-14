@@ -91,6 +91,12 @@ export function invalidate(match: (key: string) => boolean = () => true) {
   }
 }
 
+/** Forget every cached value (another account signed in). */
+export function resetQueries() {
+  cache.clear();
+  for (const subs of subscribers.values()) subs.forEach((cb) => cb());
+}
+
 /** Optimistic local update of a cached value. */
 export function setQueryData<T>(key: string, updater: (prev: T | undefined) => T) {
   set(key, { data: updater(cache.get(key)?.data as T | undefined) });

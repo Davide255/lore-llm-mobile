@@ -1,14 +1,15 @@
 import { SegmentedControl } from '@expo/ui/community/segmented-control';
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Switch } from 'react-native';
+import { ActivityIndicator, Alert } from 'react-native';
 
-import { resetDemoData } from '@/api';
-import { AgentAvatar, Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
+import { authUser, signOut } from '@/auth/session';
+import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
+import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
-import { brand, useTheme } from '@/theme';
+import { useTheme } from '@/theme';
 import { setAppearance, useAppearance, type AppearancePreference } from '@/theme/appearance';
 
 const appearanceOptions: { value: AppearancePreference; label: string }[] = [
@@ -20,6 +21,7 @@ const appearanceOptions: { value: AppearancePreference; label: string }[] = [
 /** F3 — Settings. Per-agent permissions are the only place that decides who writes. */
 export default function SettingsScreen() {
   const t = useTheme();
+  const user = authUser.useValue();
   const settings = useSettings();
   const summary = useSummary();
   const agents = useAgents();
@@ -27,21 +29,35 @@ export default function SettingsScreen() {
   const appearance = useAppearance();
   const s = settings.data;
 
-  const toggle = (value: boolean, onValueChange: (v: boolean) => void) => (
-    <Switch value={value} onValueChange={onValueChange} trackColor={{ true: brand.purple, false: undefined }} thumbColor="#fff" ios_backgroundColor={t.fill} />
-  );
-
   const sync = async () => {
     setSyncing(true);
     await attempt(() => actions.sync(), 'Sincronizzazione non riuscita');
     setSyncing(false);
   };
 
+  const confirmSignOut = () =>
+    Alert.alert('Uscire?', 'La knowledge base resta sul server: ritrovi tutto accedendo di nuovo.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Esci', style: 'destructive', onPress: () => signOut() },
+    ]);
+
   return (
     <>
       <Stack.Screen options={{ title: 'Impostazioni' }} />
       <Screen>
-        <Section header="Base di conoscenza">
+        {user && (
+          <Section header="Account">
+            <Cell
+              icon={<AgentAvatar label={initialsOf(user.name)} round />}
+              title={user.name}
+              strong
+              subtitle={user.email ? `${user.email} · Google` : 'Account Google'}
+            />
+            <Cell icon={<IconWell name="logout" />} title="Esci" titleColor={t.error} onPress={confirmSignOut} />
+          </Section>
+        )}
+
+        <Section header="Base di conoscenza" footer={s ? `Server: ${s.server}` : undefined}>
           <Cell
             icon={<IconWell name={syncing ? 'sync' : 'cloudDone'} />}
             title="Sincronizzazione"
@@ -54,20 +70,21 @@ export default function SettingsScreen() {
             chevron={!syncing}
             onPress={syncing ? undefined : sync}
           />
-          <Cell
-            icon={<IconWell name="offline" />}
-            title="Disponibile offline"
-            right={toggle(!!s?.offlineAvailable, (v) => actions.updateSettings({ offlineAvailable: v }))}
-          />
         </Section>
 
-        <Section header="Agenti" footer="Solo gli agenti con accesso in scrittura possono modificare i file.">
+        <Section header="Agenti" footer="Ogni agente ha il suo token: il server applica permessi e progetti a ogni chiamata. Revocarlo lo blocca subito.">
           {(agents.data ?? []).map((a) => (
             <Cell
               key={a.id}
-              icon={<AgentAvatar agent={a} />}
+              icon={<AgentAvatar agent={a} round />}
               title={a.name}
-              subtitle={a.permission === 'read-write' ? 'Lettura e scrittura' : 'Sola lettura'}
+              subtitle={[
+                a.name !== AGENT_KINDS[a.kind].label ? AGENT_KINDS[a.kind].label : null,
+                a.permission === 'read-write' ? 'Lettura e scrittura' : 'Sola lettura',
+                a.scope.includes('*') ? null : a.scope.length === 1 ? a.scope[0] : `${a.scope.length} progetti`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
               chevron
               onPress={() => router.push(routes.agent(a.id))}
             />
@@ -88,30 +105,6 @@ export default function SettingsScreen() {
           appearance={t.scheme}
           tintColor={t.accent}
         />
-
-        <Section header="Indice" footer="index.md viene ricompilato in background dopo ogni modifica al progetto.">
-          <Cell
-            icon={<IconWell name="index" />}
-            title="Rigenera dopo ogni modifica"
-            right={toggle(!!s?.regenerateIndexOnChange, (v) => actions.updateSettings({ regenerateIndexOnChange: v }))}
-          />
-        </Section>
-
-        {resetDemoData && (
-          <Section header="Sviluppo" footer="Il backend non è ancora collegato: i dati sono simulati sul dispositivo.">
-            <Cell
-              icon={<IconWell name="restore" />}
-              title="Ripristina dati demo"
-              titleColor={t.error}
-              onPress={() =>
-                Alert.alert('Ripristinare i dati demo?', 'Tutte le modifiche locali verranno perse.', [
-                  { text: 'Annulla', style: 'cancel' },
-                  { text: 'Ripristina', style: 'destructive', onPress: () => resetDemoData?.() },
-                ])
-              }
-            />
-          </Section>
-        )}
       </Screen>
     </>
   );
