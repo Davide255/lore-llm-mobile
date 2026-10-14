@@ -33,7 +33,7 @@ The UI follows the *KB Wireframes* design (Athly design system), organised in si
 | **E · Manage** | Swipe actions (rename / delete), long-press context menu with preview, delete confirmation, 10-second undo toast |
 | **F · Agents** | Activity feed of agent changes (server audit log) · unified diff of a change with restore · per-agent permissions (read / read-write) and projects · connect a Claude or Codex agent (token shown once, with its setup) · revoke |
 
-Plus: sign in with Apple or Google, agent identities (Claude/Codex avatars, friendly names; listings and documents say which agent edited what), and light/dark themes with an in-app **Aspetto** setting (System / Light / Dark).
+Plus: TeX math in documents (`$…$` and `\(…\)` inline; `$$…$$`, `\[…\]` and ` ```math ` blocks), sign in with Apple or Google, agent identities (Claude/Codex avatars, friendly names; listings and documents say which agent edited what), and light/dark themes with an in-app **Aspetto** setting (System / Light / Dark).
 
 ## Tech stack
 
@@ -42,6 +42,7 @@ Plus: sign in with Apple or Google, agent identities (Claude/Codex avatars, frie
 - **Native UI** — `expo-symbols` (SF Symbols on iOS, Material Symbols on Android/web), `expo-glass-effect`, `@expo/ui` segmented control, system `Switch`, `Alert` and `ActionSheetIOS`
 - `react-native-gesture-handler` (swipe rows), `react-native-reanimated` (keyboard-tracking toolbar, toasts)
 - `modules/generic-oauth2` — local Expo module ported from the [generic-oauth2](https://github.com/Davide255/generic-oauth2) Capacitor plugin (OAuthSwift + `ASWebAuthenticationSession`) for the Cognito login
+- `mathjax-full` (TeX → SVG in plain JS) drawn with `react-native-svg`, for math in documents
 - `expo-secure-store` (tokens in the keychain), `@react-native-async-storage/async-storage` (per-user app state, appearance preference), `expo-clipboard`
 - TypeScript (strict), ESLint (`eslint-config-expo`)
 
@@ -75,7 +76,7 @@ src/
   components/             UI building blocks (grouped lists, header items,
                           markdown renderer, entry rows, agent identity,
                           floating toolbar, action sheet, toast, editor/)
-  lib/                    markdown parser/serializer, diff, paths, routes, formatting
+  lib/                    markdown parser/serializer, TeX → SVG, diff, paths, routes, formatting
   theme/                  design tokens (light/dark) and appearance preference
 ```
 

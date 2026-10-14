@@ -1,7 +1,7 @@
 /**
  * Minimal, line-oriented markdown model used by both the reader and the
  * block editor. It covers what a knowledge base needs (headings, paragraphs,
- * bullet/ordered/task lists, quotes, fenced code, rules) and round-trips:
+ * bullet/ordered/task lists, quotes, fenced code, rules, TeX math) and round-trips:
  * `serialize(parse(src))` is a normalized but semantically equal document.
  */
 
@@ -12,8 +12,14 @@ export type Block =
   | { type: 'ordered'; indent: number; n: number; text: string; line: number }
   | { type: 'task'; indent: number; checked: boolean; text: string; line: number }
   | { type: 'quote'; text: string; line: number }
-  | { type: 'code'; lang: string; text: string; line: number }
+  | { type: 'code'; lang: string; text: string; line: number; delim?: MathDelim }
   | { type: 'rule'; line: number };
+
+/**
+ * Display math is a `math` code block: written as a ```math fence, or between
+ * `$$` / `\[` delimiters (kept in `delim` so it is written back the same way).
+ */
+export type MathDelim = '$$' | '\\[';
 
 export type BlockType = Block['type'];
 
@@ -24,6 +30,12 @@ const ORDERED = /^(\s*)(\d+)[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
 const FENCE = /^\s*```\s*([\w+-]*)\s*$/;
 const RULE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
+const MATH_OPEN = /^\s*(\$\$|\\\[)(.*)$/;
+const MATH_CLOSE: Record<MathDelim, RegExp> = {
+  // The closing delimiter ends the line, with no other `$$` before it.
+  $$: /^((?:(?!\$\$).)*)\$\$\s*$/,
+  '\\[': /^((?:(?!\\\]).)*)\\\]\s*$/,
+};
 
 function indentOf(ws: string) {
   const spaces = ws.replace(/\t/g, '  ').length;
@@ -38,8 +50,28 @@ function isSpecial(line: string) {
     ORDERED.test(line) ||
     QUOTE.test(line) ||
     FENCE.test(line) ||
-    RULE.test(line)
+    RULE.test(line) ||
+    MATH_OPEN.test(line)
   );
+}
+
+/** A display math block starting on line `start`, or null when it isn't closed before a blank line. */
+function readMath(lines: string[], start: number, delim: MathDelim, first: string): { block: Block; next: number } | null {
+  const close = MATH_CLOSE[delim];
+  const block = (text: string, next: number) => ({ block: { type: 'code', lang: 'math', delim, text, line: start } as Block, next });
+  const same = first.match(close);
+  if (same) return same[1].trim() ? block(same[1].trim(), start + 1) : null;
+  if (first.includes(delim)) return null; // e.g. `$$a$$ and $$b$$`: inline math in a paragraph
+  const body = first.trim() ? [first.trim()] : [];
+  for (let i = start + 1; i < lines.length && lines[i].trim(); i++) {
+    const m = lines[i].match(close);
+    if (m) {
+      if (m[1].trim()) body.push(m[1].trimEnd());
+      return block(body.join('\n'), i + 1);
+    }
+    body.push(lines[i].trimEnd());
+  }
+  return null;
 }
 
 export function parse(src: string): Block[] {
@@ -61,6 +93,14 @@ export function parse(src: string): Block[] {
       i++; // closing fence
       blocks.push({ type: 'code', lang: m[1] ?? '', text: body.join('\n'), line: start });
       continue;
+    }
+    if ((m = line.match(MATH_OPEN))) {
+      const math = readMath(lines, i, m[1] as MathDelim, m[2]);
+      if (math) {
+        blocks.push(math.block);
+        i = math.next;
+        continue;
+      }
     }
     if (RULE.test(line)) {
       blocks.push({ type: 'rule', line: i++ });
@@ -113,7 +153,8 @@ export function parse(src: string): Block[] {
       continue;
     }
     const start = i;
-    const body: string[] = [];
+    // The first line always belongs to the paragraph (it may look like math that isn't closed).
+    const body = [lines[i++].trim()];
     while (i < lines.length && lines[i].trim() && !isSpecial(lines[i])) body.push(lines[i++].trim());
     blocks.push({ type: 'paragraph', text: body.join(' '), line: start });
   }
@@ -139,6 +180,7 @@ export function serializeBlock(b: Block): string {
         .map((l) => `> ${l}`)
         .join('\n');
     case 'code':
+      if (b.delim) return `${b.delim}\n${b.text}\n${b.delim === '$$' ? '$$' : '\\]'}`;
       return '```' + b.lang + '\n' + b.text + '\n```';
     case 'rule':
       return '---';
@@ -168,10 +210,26 @@ export type Inline =
   | { type: 'italic'; children: Inline[] }
   | { type: 'strike'; children: Inline[] }
   | { type: 'code'; text: string }
+  | { type: 'math'; text: string; display: boolean }
   | { type: 'link'; href: string; children: Inline[] };
 
-const INLINE =
-  /(`[^`]+`)|(\*\*[^*]+?\*\*|__[^_]+?__)|(~~[^~]+?~~)|(\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)|(\[[^\]]+\]\([^)\s]+\))/;
+const INLINE = new RegExp(
+  [
+    /(`[^`]+`)/, // 1 code
+    /(\\\$)/, // 2 escaped dollar
+    /(\$\$[^$]+?\$\$)/, // 3 display math inside a paragraph
+    // 4 $math$, as in Pandoc: no space after the opening or before the closing
+    // dollar, and no digit right after it, so "$5 and $10" stays text.
+    /(\$[^\s$](?:[^$\n]*?[^\s$\\])?\$(?!\d))/,
+    /(\\\(.+?\\\))/, // 5 \(math\)
+    /(\*\*[^*]+?\*\*|__[^_]+?__)/, // 6 bold
+    /(~~[^~]+?~~)/, // 7 strike
+    /(\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)/, // 8 italic
+    /(\[[^\]]+\]\([^)\s]+\))/, // 9 link
+  ]
+    .map((r) => r.source)
+    .join('|'),
+);
 
 export function parseInline(src: string): Inline[] {
   const out: Inline[] = [];
@@ -185,10 +243,13 @@ export function parseInline(src: string): Inline[] {
     if (m.index > 0) out.push({ type: 'text', text: rest.slice(0, m.index) });
     const tok = m[0];
     if (m[1]) out.push({ type: 'code', text: tok.slice(1, -1) });
-    else if (m[2]) out.push({ type: 'bold', children: parseInline(tok.slice(2, -2)) });
-    else if (m[3]) out.push({ type: 'strike', children: parseInline(tok.slice(2, -2)) });
-    else if (m[4]) out.push({ type: 'italic', children: parseInline(tok.slice(1, -1)) });
-    else if (m[5]) {
+    else if (m[2]) out.push({ type: 'text', text: '$' });
+    else if (m[3]) out.push({ type: 'math', text: tok.slice(2, -2).trim(), display: true });
+    else if (m[4] || m[5]) out.push({ type: 'math', text: tok.slice(m[4] ? 1 : 2, m[4] ? -1 : -2).trim(), display: false });
+    else if (m[6]) out.push({ type: 'bold', children: parseInline(tok.slice(2, -2)) });
+    else if (m[7]) out.push({ type: 'strike', children: parseInline(tok.slice(2, -2)) });
+    else if (m[8]) out.push({ type: 'italic', children: parseInline(tok.slice(1, -1)) });
+    else if (m[9]) {
       const lm = tok.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/)!;
       out.push({ type: 'link', href: lm[2], children: parseInline(lm[1]) });
     }
