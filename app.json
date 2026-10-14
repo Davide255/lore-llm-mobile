@@ -35,7 +35,8 @@
           "imageWidth": 160
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/with-scene-delegate"
     ],
     "experiments": {
       "typedRoutes": true,
