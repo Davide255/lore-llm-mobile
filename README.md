@@ -4,7 +4,7 @@ A mobile app for editing a **knowledge base shared between you and your AI agent
 
 Built with Expo (SDK 57) and Expo Router, using native system components wherever possible — on iOS 26 the tab bar, header buttons, bottom toolbar and menus render with Liquid Glass.
 
-The knowledge base lives on the [lore-llm](../lore-llm) server (Cloudflare Worker + R2), shared with Lore LLM Desktop. You sign in with Google (through AWS Cognito) before anything else is shown.
+The knowledge base lives on the [lore-llm](../lore-llm) server (Cloudflare Worker + R2), shared with Lore LLM Desktop. You sign in with Apple or Google (through AWS Cognito) before anything else is shown.
 
 ## The knowledge base
 
@@ -33,7 +33,7 @@ The UI follows the *KB Wireframes* design (Athly design system), organised in si
 | **E · Manage** | Swipe actions (rename / delete), long-press context menu with preview, delete confirmation, 10-second undo toast |
 | **F · Agents** | Activity feed of agent changes (server audit log) · unified diff of a change with restore · per-agent permissions (read / read-write) and projects · connect a Claude or Codex agent (token shown once, with its setup) · revoke |
 
-Plus: sign in with Google, agent identities (Claude/Codex avatars, friendly names; listings and documents say which agent edited what), and light/dark themes with an in-app **Aspetto** setting (System / Light / Dark).
+Plus: sign in with Apple or Google, agent identities (Claude/Codex avatars, friendly names; listings and documents say which agent edited what), and light/dark themes with an in-app **Aspetto** setting (System / Light / Dark).
 
 ## Tech stack
 
@@ -55,7 +55,7 @@ modules/
 src/
   app/                    Expo Router routes
     _layout.tsx           root stack (sign-in gate), providers, toast/sheet hosts
-    sign-in.tsx           "Accedi con Google", the only screen while signed out
+    sign-in.tsx           "Accedi con Apple" / "Accedi con Google", the only screen while signed out
     (tabs)/               native tab bar: (projects), search, activity, settings
     folder/[...path].tsx  project or folder contents
     file/[...path].tsx    viewer for index.md, checklist.md and documents
@@ -128,11 +128,13 @@ The app talks to the lore-llm Worker (`EXPO_PUBLIC_LORE_API_URL`, default the de
 - polls `/v1/audit` every 10 s in the foreground (and on returning to the app) to pick up agent writes. An agent change it sees happen keeps its diff and can be restored; Activity lists every change in the audit log;
 - deletes are undoable for 10 s (the contents are kept in memory and written back).
 
-### Sign in with Google
+### Sign in with Apple or Google
 
-`src/auth/session.ts` runs the Cognito Authorization Code + PKCE flow through the local `generic-oauth2` module, straight to Google (`identity_provider=Google`), with the callback on `lorellm://auth/callback`. Tokens are stored in the keychain (expo-secure-store); the ID token is sent as `Authorization: Bearer` and refreshed before expiry. Signing out revokes the refresh token.
+`src/auth/session.ts` runs the Cognito Authorization Code + PKCE flow through the local `generic-oauth2` module, straight to the chosen provider (`identity_provider=SignInWithApple` or `Google`), with the callback on `lorellm://auth/callback`. Tokens are stored in the keychain (expo-secure-store); the ID token is sent as `Authorization: Bearer` and refreshed before expiry. Signing out revokes the refresh token.
 
-The Cognito app client is **Lore LLM Mobile**: public (no secret), `code` flow, `openid email profile` scopes, the `Google` IdP and the callback URL above. Its id is also in the Worker's `COGNITO_CLIENT_IDS`.
+The Cognito app client is **Lore LLM Mobile**: public (no secret), `code` flow, `openid email profile` scopes, the `SignInWithApple` and `Google` IdPs and the callback URL above. Its id is also in the Worker's `COGNITO_CLIENT_IDS`.
+
+Apple goes through Cognito's web flow, so the pool's `SignInWithApple` IdP needs an Apple **Services ID** (not the app's bundle ID) as its client id, with `https://<cognito domain>/oauth2/idpresponse` as a return URL and the Cognito domain registered on it; its attribute mapping should include `email`. No Sign in with Apple entitlement is needed in the app.
 
 | Env var | Default |
 | --- | --- |

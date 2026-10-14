@@ -4,7 +4,7 @@ import { GenericOAuth2, OAuth2Errors, type TokenResponse } from '../../modules/g
 import { createSignal } from '@/data/store';
 
 /**
- * Sign in with Google, brokered by AWS Cognito (the user pool the lore-llm
+ * Sign in with Google or Apple, brokered by AWS Cognito (the user pool the lore-llm
  * Worker trusts). Authorization Code + PKCE in an ASWebAuthenticationSession
  * via the generic-oauth2 module; the callback comes back on the app's
  * `lorellm://` scheme. Tokens live only in the keychain (expo-secure-store).
@@ -29,11 +29,17 @@ interface Session {
   expiresAt: number;
 }
 
-/** Signed-in Google account (via Cognito). The tokens never leave this module. */
+/** Cognito identity provider names, passed as `identity_provider`. */
+export type AuthProvider = 'Google' | 'SignInWithApple';
+
+export const providerLabels: Record<AuthProvider, string> = { Google: 'Google', SignInWithApple: 'Apple' };
+
+/** Signed-in Google or Apple account (via Cognito). The tokens never leave this module. */
 export interface AuthUser {
   id: string;
   name: string;
   email: string | null;
+  provider: AuthProvider;
 }
 
 let session: Session | null = null;
@@ -61,7 +67,7 @@ export async function loadSession() {
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 
-function claims(jwt: string): Record<string, string | undefined> {
+function claims(jwt: string): Record<string, string | undefined> & { identities?: { providerName?: string }[] } {
   try {
     const b64 = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const bin = atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '='));
@@ -75,11 +81,12 @@ function claims(jwt: string): Record<string, string | undefined> {
 function userOf(s: Session | null): AuthUser | null {
   if (!s) return null;
   const p = claims(s.idToken);
-  // The pool maps Google's given name onto `name`, so it may be a first name
-  // only (add the family name) or already the full name (keep it).
+  const provider: AuthProvider = p.identities?.[0]?.providerName === 'SignInWithApple' ? 'SignInWithApple' : 'Google';
+  // The pool maps Google's given name and Apple's firstName onto `name`, so it
+  // may be a first name only (add the family name) or already the full name (keep it).
   const first = p.given_name || p.name;
   const full = !first ? p.family_name : !p.family_name || first.includes(p.family_name) ? first : `${first} ${p.family_name}`;
-  return { id: p.sub ?? '', name: full || p.email || 'Account Google', email: p.email ?? null };
+  return { id: p.sub ?? '', name: full || p.email || `Account ${providerLabels[provider]}`, email: p.email ?? null, provider };
 }
 
 function adopt(tok: TokenResponse, refreshToken?: string) {
@@ -131,7 +138,7 @@ async function clear() {
 // ─── Sign in / out ───────────────────────────────────────────────────────────
 
 /** Resolves with the user, or null when the user cancelled. */
-export async function signIn(): Promise<AuthUser | null> {
+export async function signIn(provider: AuthProvider): Promise<AuthUser | null> {
   let res;
   try {
     res = await GenericOAuth2.authenticate({
@@ -142,8 +149,8 @@ export async function signIn(): Promise<AuthUser | null> {
       redirectUrl: REDIRECT_URI,
       scope: SCOPES,
       pkceEnabled: true,
-      // Straight to Google, skipping Cognito's hosted UI.
-      additionalParameters: { identity_provider: 'Google' },
+      // Straight to Google or Apple, skipping Cognito's hosted UI.
+      additionalParameters: { identity_provider: provider },
     });
   } catch (err) {
     if ((err as { code?: string }).code === OAuth2Errors.USER_CANCELLED) return null;

@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert } from 'react-native';
 
-import { authUser, signOut } from '@/auth/session';
+import { authUser, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
@@ -51,7 +51,7 @@ export default function SettingsScreen() {
               icon={<AgentAvatar label={initialsOf(user.name)} round />}
               title={user.name}
               strong
-              subtitle={user.email ? `${user.email} · Google` : 'Account Google'}
+              subtitle={user.email ? `${user.email} · ${providerLabels[user.provider]}` : `Account ${providerLabels[user.provider]}`}
             />
             <Cell icon={<IconWell name="logout" />} title="Esci" titleColor={t.error} onPress={confirmSignOut} />
           </Section>

@@ -59,6 +59,7 @@ export const icons = {
   agent: { sf: 'person.crop.circle.badge.plus', md: 'person_add' },
   restore: { sf: 'arrow.counterclockwise', md: 'restore' },
   logout: { sf: 'rectangle.portrait.and.arrow.right', md: 'logout' },
+  apple: { sf: 'apple.logo', md: 'login' },
   // Project icons
   fitness: { sf: 'figure.strengthtraining.traditional', md: 'fitness_center' },
   web: { sf: 'globe', md: 'language' },

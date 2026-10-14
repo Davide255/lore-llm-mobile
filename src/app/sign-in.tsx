@@ -3,7 +3,8 @@ import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_URL } from '@/api/cloud/cloud-client';
-import { signIn } from '@/auth/session';
+import { signIn, type AuthProvider } from '@/auth/session';
+import { Icon } from '@/components/icon';
 import { fonts, useTheme } from '@/theme';
 
 const host = API_URL.replace(/^https?:\/\//, '');
@@ -12,17 +13,19 @@ const host = API_URL.replace(/^https?:\/\//, '');
 export default function SignInScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<AuthProvider | null>(null);
+  // Sign in with Apple follows Apple's button style: black on light, white on dark.
+  const appleInk = t.scheme === 'dark' ? '#000' : '#fff';
 
-  const start = async () => {
-    setBusy(true);
+  const start = async (provider: AuthProvider) => {
+    setBusy(provider);
     try {
       // Null when the user closed the sheet: just stay here.
-      await signIn();
+      await signIn(provider);
     } catch (e) {
       Alert.alert('Accesso non riuscito', e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -38,13 +41,32 @@ export default function SignInScreen() {
         </Text>
       </View>
 
-      <Pressable
-        onPress={start}
-        disabled={busy}
-        accessibilityRole="button"
-        style={({ pressed }) => [styles.button, { backgroundColor: t.accent, opacity: busy ? 0.6 : pressed ? 0.85 : 1 }]}>
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonLabel}>Accedi con Google</Text>}
-      </Pressable>
+      <View style={styles.buttons}>
+        <Pressable
+          onPress={() => start('SignInWithApple')}
+          disabled={busy != null}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.button,
+            { backgroundColor: t.scheme === 'dark' ? '#fff' : '#000', opacity: busy ? 0.6 : pressed ? 0.85 : 1 },
+          ]}>
+          {busy === 'SignInWithApple' ? (
+            <ActivityIndicator color={appleInk} />
+          ) : (
+            <View style={styles.buttonRow}>
+              <Icon name="apple" size={19} color={appleInk} weight="medium" />
+              <Text style={[styles.buttonLabel, { color: appleInk }]}>Accedi con Apple</Text>
+            </View>
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => start('Google')}
+          disabled={busy != null}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.button, { backgroundColor: t.accent, opacity: busy ? 0.6 : pressed ? 0.85 : 1 }]}>
+          {busy === 'Google' ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonLabel}>Accedi con Google</Text>}
+        </Pressable>
+      </View>
       <Text style={[styles.server, { color: t.textMuted }]}>Server: {host}</Text>
     </View>
   );
@@ -56,7 +78,9 @@ const styles = StyleSheet.create({
   logo: { width: 96, height: 96, marginBottom: 6 },
   title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
   body: { fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 340 },
+  buttons: { gap: 12 },
   button: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderCurve: 'continuous' },
+  buttonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   buttonLabel: { color: '#fff', fontSize: 17, fontWeight: '600' },
   server: { fontSize: 12, textAlign: 'center', marginTop: 12 },
 });
