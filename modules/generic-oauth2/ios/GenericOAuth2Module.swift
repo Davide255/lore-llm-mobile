@@ -81,7 +81,7 @@ public class GenericOAuth2Module: Module {
 
     // Shared (non-ephemeral) session: the system browser's cookies are reused,
     // so an existing Google login means one tap instead of a full sign-in.
-    oauthSwift.authorizeURLHandler = ASWebAuthenticationURLHandler(
+    oauthSwift.authorizeURLHandler = WebAuthenticationURLHandler(
       callbackUrlScheme: URL(string: redirectUrl)?.scheme ?? "",
       presentationContextProvider: anchorProvider,
       prefersEphemeralWebBrowserSession: o.value("prefersEphemeralWebBrowserSession") as? Bool ?? false
@@ -247,6 +247,54 @@ struct Options {
   }
 
   func string(_ key: String) -> String? { value(key) as? String }
+}
+
+/// OAuthSwift's ASWebAuthenticationURLHandler re-opens the callback with
+/// `UIApplication.open`, counting on the app's openURL handler to pass it to
+/// `OAuthSwift.handle(url:)` (the Capacitor plugin does that from its openURL
+/// notification). In an Expo app that URL lands in expo-router instead, which shows
+/// "Unmatched Route" while the login never completes. This hands the callback, or a
+/// cancel/error in the same format OAuthSwift expects, straight to OAuthSwift.
+final class WebAuthenticationURLHandler: OAuthSwiftURLHandlerType {
+  private let callbackUrlScheme: String
+  private let prefersEphemeralWebBrowserSession: Bool
+  private weak var presentationContextProvider: ASWebAuthenticationPresentationContextProviding?
+  private var session: ASWebAuthenticationSession?
+
+  init(
+    callbackUrlScheme: String,
+    presentationContextProvider: ASWebAuthenticationPresentationContextProviding?,
+    prefersEphemeralWebBrowserSession: Bool
+  ) {
+    self.callbackUrlScheme = callbackUrlScheme
+    self.presentationContextProvider = presentationContextProvider
+    self.prefersEphemeralWebBrowserSession = prefersEphemeralWebBrowserSession
+  }
+
+  func handle(_ url: URL) {
+    let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackUrlScheme) {
+      [weak self] callback, error in
+      guard let self else { return }
+      self.session = nil
+      if let callback {
+        OAuthSwift.handle(url: callback)
+      } else {
+        let nsError = (error ?? ASWebAuthenticationSessionError(.canceledLogin)) as NSError
+        var components = URLComponents()
+        components.scheme = self.callbackUrlScheme
+        components.queryItems = [
+          URLQueryItem(name: "error", value: nsError.localizedDescription),
+          URLQueryItem(name: "error_domain", value: nsError.domain),
+          URLQueryItem(name: "error_code", value: String(nsError.code)),
+        ]
+        if let errorURL = components.url { OAuthSwift.handle(url: errorURL) }
+      }
+    }
+    session.presentationContextProvider = presentationContextProvider
+    session.prefersEphemeralWebBrowserSession = prefersEphemeralWebBrowserSession
+    self.session = session
+    session.start()
+  }
 }
 
 final class PresentationAnchorProvider: NSObject, ASWebAuthenticationPresentationContextProviding {

@@ -1,6 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["GenericOAuth2Module"]
+    "modules": ["GenericOAuth2Module"],
+    "appDelegateSubscribers": ["GenericOAuth2AppDelegateSubscriber"]
   }
 }
