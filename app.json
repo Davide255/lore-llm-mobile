@@ -10,8 +10,11 @@
     "ios": {
       "icon": "./assets/lore-llm.icon",
       "bundleIdentifier": "it.lore.llm",
-      "buildNumber": "4",
-      "appleTeamId": "ZVCQ7Q6256"
+      "buildNumber": "5",
+      "appleTeamId": "ZVCQ7Q6256",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.davide.lorellm",
