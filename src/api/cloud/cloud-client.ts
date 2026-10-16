@@ -857,6 +857,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return { lastSyncAt: this.state.lastSyncAt, server: API_URL.replace(/^https?:\/\//, '') };
   }
 
+  async deleteAccount() {
+    await this.request('DELETE', '/v1/account');
+  }
+
   async sync() {
     await this.ready();
     await this.reconcile();

@@ -69,6 +69,8 @@ export interface KnowledgeBaseClient {
   // Settings
   getSettings(): Promise<KBSettings>;
   sync(): Promise<KBSettings>;
+  /** Permanently deletes the user's files, agents and activity on the server. */
+  deleteAccount(): Promise<void>;
 
   /** Changes noticed in the background (agent writes). Returns an unsubscribe function. */
   subscribe(listener: (event: ServerEvent) => void): () => void;

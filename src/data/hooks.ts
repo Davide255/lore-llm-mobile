@@ -85,6 +85,7 @@ export const actions = {
   revertChange: (id: string) => mutate(() => kb.revertChange(id)),
 
   sync: () => mutate(() => kb.sync()),
+  deleteAccount: () => kb.deleteAccount(),
 };
 
 /** Runs an action and surfaces failures with a system alert. */

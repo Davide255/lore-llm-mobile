@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/lore-llm.icon",
       "bundleIdentifier": "it.lore.llm",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "appleTeamId": "ZVCQ7Q6256",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert } from 'react-native';
 
-import { authUser, providerLabels, signOut } from '@/auth/session';
+import { authUser, deleteAccount, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
@@ -26,6 +26,7 @@ export default function SettingsScreen() {
   const summary = useSummary();
   const agents = useAgents();
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const appearance = useAppearance();
   const s = settings.data;
 
@@ -41,6 +42,32 @@ export default function SettingsScreen() {
       { text: 'Esci', style: 'destructive', onPress: () => signOut() },
     ]);
 
+  const confirmDeleteAccount = () =>
+    Alert.alert(
+      'Eliminare l’account?',
+      'Verranno eliminati definitivamente il tuo account, tutti i progetti, i file e gli agenti collegati. L’operazione non si può annullare.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Continua',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Ultima conferma', 'Eliminare definitivamente l’account e tutti i suoi dati?', [
+              { text: 'Annulla', style: 'cancel' },
+              {
+                text: 'Elimina account',
+                style: 'destructive',
+                onPress: async () => {
+                  setDeleting(true);
+                  await attempt(() => deleteAccount(actions.deleteAccount), 'Eliminazione non riuscita');
+                  setDeleting(false);
+                },
+              },
+            ]),
+        },
+      ],
+    );
+
   return (
     <>
       <Stack.Screen options={{ title: 'Impostazioni' }} />
@@ -54,6 +81,14 @@ export default function SettingsScreen() {
               subtitle={user.email ? `${user.email} · ${providerLabels[user.provider]}` : `Account ${providerLabels[user.provider]}`}
             />
             <Cell icon={<IconWell name="logout" />} title="Esci" titleColor={t.error} onPress={confirmSignOut} />
+            <Cell
+              icon={<IconWell name="delete" />}
+              title="Elimina account"
+              subtitle="Elimina definitivamente account e dati"
+              titleColor={t.error}
+              right={deleting ? <ActivityIndicator color={t.textMuted} /> : undefined}
+              onPress={deleting ? undefined : confirmDeleteAccount}
+            />
           </Section>
         )}
 

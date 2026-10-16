@@ -164,6 +164,16 @@ export async function signIn(provider: AuthProvider): Promise<AuthUser | null> {
   return user;
 }
 
+/**
+ * Account deletion (App Store 5.1.1(v)): the server erases the user's data and
+ * identity first; only then is the local session dropped, so a failure leaves
+ * the user signed in and able to retry.
+ */
+export async function deleteAccount(remove: () => Promise<void>) {
+  await remove();
+  await signOut();
+}
+
 export async function signOut() {
   const refreshToken = session?.refreshToken;
   await clear();
