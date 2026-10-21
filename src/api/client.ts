@@ -86,6 +86,8 @@ export interface KnowledgeBaseClient {
   listTeamInvites(teamId: string): Promise<TeamInvite[]>;
   inviteToTeam(teamId: string, email: string, role: InviteRole): Promise<TeamInvite>;
   revokeInvite(teamId: string, inviteId: string): Promise<void>;
+  /** Moves one of your own projects into a team you can write to. */
+  moveProjectToTeam(project: string, teamId: string): Promise<void>;
   /** Invitations sent to the signed-in user's email. */
   listMyInvites(): Promise<MyInvite[]>;
   answerInvite(inviteId: string, accept: boolean): Promise<void>;

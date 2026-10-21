@@ -100,6 +100,7 @@ export const actions = {
   inviteToTeam: (teamId: string, email: string, role: InviteRole) => mutate(() => kb.inviteToTeam(teamId, email, role)),
   revokeInvite: (teamId: string, inviteId: string) => mutate(() => kb.revokeInvite(teamId, inviteId)),
   answerInvite: (inviteId: string, accept: boolean) => mutate(() => kb.answerInvite(inviteId, accept)),
+  moveProjectToTeam: (project: string, teamId: string) => mutate(() => kb.moveProjectToTeam(project, teamId)),
 
   sync: () => mutate(() => kb.sync()),
 };

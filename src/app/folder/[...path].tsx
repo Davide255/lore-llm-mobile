@@ -1,14 +1,16 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { RefreshControl, View } from 'react-native';
 
-import { confirmDelete } from '@/components/entry-actions';
+import { chooseTeamForProject, confirmDelete } from '@/components/entry-actions';
 import { EntryRow } from '@/components/entry-row';
 import { BottomAction, HeaderItems, type MenuItem } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { Banner, EmptyState, ErrorState, IconWell, Loading, Screen, Section } from '@/components/ui';
-import { useFolder } from '@/data/hooks';
+import { useFolder, useProject } from '@/data/hooks';
 import { relativeTime } from '@/lib/format';
+import { projectLabel, projectOf, teamOf } from '@/lib/paths';
 import { pathParam, routes } from '@/lib/routes';
+import { ROLE_LABEL, canWrite } from '@/lib/teams';
 import { useTheme } from '@/theme';
 
 /** A2 — Project / folder contents. */
@@ -17,8 +19,12 @@ export default function FolderScreen() {
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
   const folder = useFolder(path);
   const data = folder.data;
-  const name = path.split('/').pop() ?? '';
   const isRoot = !path.includes('/');
+  const name = isRoot ? projectLabel(path) : (path.split('/').pop() ?? '');
+  const project = useProject(projectOf(path)).data;
+  // Until the folder has loaded we do not know the role: offer nothing rather than something the server would refuse.
+  const writable = !!data && canWrite(data.access);
+  const readOnly = !!data && !writable;
 
   const create: MenuItem[] = [
     { label: 'Nuovo file .md', icon: 'noteAdd', onPress: () => router.push(routes.newFile(path, 'file')) },
@@ -28,6 +34,9 @@ export default function FolderScreen() {
   const more: MenuItem[] = [
     { label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(path, true)) },
     ...(isRoot ? [] : [{ label: 'Sposta in…', icon: 'move' as const, onPress: () => router.push(routes.move(path, true)) }]),
+    ...(isRoot && !teamOf(path)
+      ? [{ label: 'Sposta in un team…', icon: 'team' as const, onPress: () => chooseTeamForProject(path, (key) => router.replace(routes.folder(key))) }]
+      : []),
     {
       label: isRoot ? 'Elimina progetto' : 'Elimina cartella',
       icon: 'delete',
@@ -45,7 +54,7 @@ export default function FolderScreen() {
   return (
     <>
       <Stack.Screen options={{ title: name }} />
-      <HeaderItems right={[{ kind: 'menu', label: 'Altro', icon: 'more', items: more }]} />
+      <HeaderItems right={writable ? [{ kind: 'menu', label: 'Altro', icon: 'more', items: more }] : []} />
       {folder.loading ? (
         <Loading />
       ) : folder.error || !data ? (
@@ -54,6 +63,12 @@ export default function FolderScreen() {
         <Screen
           contentContainerStyle={{ paddingBottom: 120 }}
           refreshControl={<RefreshControl refreshing={folder.refreshing} onRefresh={folder.refresh} />}>
+          {(project?.team && isRoot) || readOnly ? (
+            <Banner icon={readOnly ? 'lock' : 'team'} tone="neutral" style={{ marginBottom: 8 }}>
+              {project?.team && isRoot ? `Team ${project.team.name} · ${ROLE_LABEL[data.access]}. ` : ''}
+              {readOnly ? 'Puoi leggere ma non modificare.' : 'Le modifiche sono visibili a tutto il team.'}
+            </Banner>
+          ) : null}
           {(data.index || data.checklist) && (
             <Section style={{ marginTop: 6 }}>
               {data.index && (
@@ -98,7 +113,7 @@ export default function FolderScreen() {
         </Screen>
       )}
       {/* Last child so the Android FAB paints above the list. */}
-      <BottomAction item={{ kind: 'menu', label: 'Crea', icon: 'add', title: `Crea in ${name}/`, items: create }} />
+      {writable && <BottomAction item={{ kind: 'menu', label: 'Crea', icon: 'add', title: `Crea in ${name}/`, items: create }} />}
     </>
   );
 }

@@ -44,7 +44,21 @@ import {
 import { idToken } from '@/auth/session';
 import { diffLines, diffStats } from '@/lib/diff';
 import { checklistProgress, parse, plainText } from '@/lib/markdown';
-import { CHECKLIST_FILE, basename, dirname, joinPath, projectOf, roleOf, splitPath } from '@/lib/paths';
+import {
+  CHECKLIST_FILE,
+  basename,
+  dirname,
+  fromWire,
+  joinPath,
+  parseProjectKey,
+  projectLabel,
+  projectOf,
+  roleOf,
+  splitPath,
+  teamOf,
+  teamProjectKey,
+  toWire,
+} from '@/lib/paths';
 
 /**
  * The knowledge base in the user's cloud space (R2 behind the lore-llm
@@ -54,6 +68,10 @@ import { CHECKLIST_FILE, basename, dirname, joinPath, projectOf, roleOf, splitPa
  * Empty folders and project metadata live on the device — object storage has
  * neither — and a cheap `/v1/version` poll tells when to look at the audit log
  * to pick up agent writes, keeping a diff of each one it sees happen.
+ *
+ * Team projects live in the teams' own spaces on the server. Here they are
+ * ordinary projects whose key carries the team (`Name@<teamId>`, see
+ * `lib/paths.ts`); `fileRequest` is where a key becomes (owner, path).
  */
 
 export const API_URL = (process.env.EXPO_PUBLIC_LORE_API_URL ?? 'https://lore-llm-dev.davide-bera2021.workers.dev').replace(/\/+$/, '');
@@ -82,6 +100,8 @@ interface ProjectSummary {
   /** Newest note; empty when the project has none. */
   updated_at: string;
   checklist: { path: string; etag: string; size: number; uploaded: string } | null;
+  /** Set client-side: the team the project belongs to (null: the user's own). */
+  teamId?: string | null;
 }
 
 /** Team rows as the Worker sends them. */
@@ -178,11 +198,13 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   /** Files of the projects that were opened, plus the checklist of every project. */
   private files = new Map<string, FileVersion>();
   private summaries = new Map<string, ProjectSummary>();
+  /** The teams the user belongs to (role included). */
+  private teams: Team[] = [];
   /** Projects whose files are mirrored (opened at least once this session). */
   private loaded = new Set<string>();
   private loading = new Map<string, Promise<void>>();
   /** Server change cursor at the last sync: while it is unchanged there is nothing to fetch. */
-  private version: number | null = null;
+  private version: string | null = null;
   private cache = new Map<string, { etag: string; content: string }>();
   private writers = new Map<string, Writer>();
   private audit: AuditRow[] = [];
@@ -207,6 +229,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     this.state = emptyState();
     this.files = new Map();
     this.summaries = new Map();
+    this.teams = [];
     this.loaded = new Set();
     this.loading = new Map();
     this.version = null;
@@ -280,6 +303,27 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return data as T;
   }
 
+  /** A call about a file or folder: the owner of the path (a team, or the user) travels as `?owner=`. */
+  private fileRequest<T>(
+    method: string,
+    route: string,
+    path: string,
+    opts: { query?: Record<string, string | number | undefined>; body?: unknown } = {},
+  ): Promise<T> {
+    const w = toWire(path);
+    return this.request<T>(method, route, { ...opts, query: { ...opts.query, path: w.path, ...(w.owner ? { owner: w.owner } : {}) } });
+  }
+
+  private roleIn(path: string): TeamRole {
+    const teamId = teamOf(path);
+    return teamId ? (this.teams.find((t) => t.id === teamId)?.role ?? 'viewer') : 'owner';
+  }
+
+  /** Viewers read only: say so before a write is attempted (the server enforces it too). */
+  private assertCanWrite(path: string) {
+    if (this.roleIn(path) === 'viewer') throw new KBError('read_only', 'Hai accesso in sola lettura a questo team');
+  }
+
   // ─── mirror ───────────────────────────────────────────────────────────────
 
   /** Download the contents of the files whose cached etag differs, recording them in `into`. */
@@ -291,7 +335,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
         for (let f = queue.shift(); f; f = queue.shift()) {
           const before = this.cache.get(f.path)?.content ?? null;
           try {
-            const got = await this.request<FileVersion & { content: string }>('GET', '/v1/file', { query: { path: f.path } });
+            const got = await this.fileRequest<FileVersion & { content: string }>('GET', '/v1/file', f.path);
             this.cache.set(f.path, { etag: got.etag, content: got.content });
             into.set(f.path, { path: f.path, size: got.size, uploaded: got.uploaded, etag: got.etag });
             changes.push({ path: f.path, before, after: got.content });
@@ -323,7 +367,29 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
    * `syncProject`.
    */
   private async syncSummaries(): Promise<FileChange[]> {
-    const { projects } = await this.request<{ projects: ProjectSummary[] }>('GET', '/v1/projects');
+    const { teams } = await this.request<{ teams: TeamRow[] }>('GET', '/v1/teams');
+    this.teams = teams.map((t) => this.toTeam(t));
+    // The user's own space plus each team's: a space that cannot be read right now (just left) counts as empty.
+    const spaces = [null, ...this.teams.map((t) => t.id)];
+    const lists = await Promise.all(
+      spaces.map(async (teamId) => {
+        try {
+          const { projects } = await this.request<{ projects: ProjectSummary[] }>('GET', '/v1/projects', {
+            query: teamId ? { owner: `t:${teamId}` } : {},
+          });
+          return projects.map((p) => ({
+            ...p,
+            teamId,
+            name: teamId ? teamProjectKey(p.name, teamId) : p.name,
+            checklist: p.checklist && { ...p.checklist, path: fromWire(teamId, p.checklist.path) },
+          }));
+        } catch (err) {
+          if (teamId && err instanceof KBError && (err.code === 'not_found' || err.code === 'read_only')) return [];
+          throw err;
+        }
+      }),
+    );
+    const projects = lists.flat();
     const changes: FileChange[] = [];
     const next = new Map(projects.map((p) => [p.name, p]));
     for (const name of [...this.summaries.keys()]) if (!next.has(name)) this.dropProject(name, changes);
@@ -350,7 +416,11 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   /** Re-list one project and pull changed contents. Returns what changed. */
   private async syncProject(project: string): Promise<FileChange[]> {
-    const { files: list } = await this.request<{ files: FileVersion[] }>('GET', '/v1/files', { query: { project } });
+    const { name, teamId } = parseProjectKey(project);
+    const { files: wire } = await this.request<{ files: FileVersion[] }>('GET', '/v1/files', {
+      query: { project: name, ...(teamId ? { owner: `t:${teamId}` } : {}) },
+    });
+    const list = wire.map((f) => ({ ...f, path: fromWire(teamId, f.path) }));
     const next = new Map(list.map((f) => [f.path, f]));
     const changes = await this.fetchStale(list, next);
     for (const path of [...this.files.keys(), ...this.cache.keys()]) {
@@ -393,10 +463,14 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return agents;
   }
 
-  /** The server's change cursor, or null when it cannot say (then every poll syncs). */
-  private async serverVersion(): Promise<number | null> {
+  /** The server's change cursor (the user's own space and each team's), or null when it cannot say (then every poll syncs). */
+  private async serverVersion(): Promise<string | null> {
     try {
-      return (await this.request<{ version: number }>('GET', '/v1/version')).version;
+      const v = await this.request<{ version: number; scopes?: Record<string, { version: number }> }>('GET', '/v1/version');
+      const scopes = Object.entries(v.scopes ?? {})
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([k, s]) => `${k}=${s.version}`);
+      return [v.version, ...scopes].join(',');
     } catch (err) {
       if (err instanceof KBError && err.code === 'network') throw err;
       return null;
@@ -546,6 +620,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       kind: 'file',
       path: f.path,
       name: basename(f.path),
+      access: this.roleIn(f.path),
       role: roleOf(f.path),
       size: f.size,
       updatedAt: f.uploaded,
@@ -559,7 +634,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return {
       kind: 'folder',
       path,
-      name: basename(path),
+      name: path.includes('/') ? basename(path) : projectLabel(path),
+      access: this.roleIn(path),
       fileCount: files.length,
       folderCount: [...folders].filter((f) => dirname(f) === path).length,
       updatedAt: updatedAt || iso(),
@@ -576,8 +652,13 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const checklist = this.cache.get(joinPath(name, CHECKLIST_FILE));
     const progress = checklist ? checklistProgress(checklist.content) : null;
     const meta = this.state.projects[name];
+    const { name: title, teamId } = parseProjectKey(name);
+    const team = teamId ? this.teams.find((t) => t.id === teamId) : undefined;
     return {
       name,
+      title,
+      team: team ? { id: team.id, name: team.name } : null,
+      access: this.roleIn(name),
       description: meta?.description || indexSummary(this.cache.get(joinPath(name, 'index.md'))?.content),
       icon: meta?.icon ?? 'folder',
       fileCount: opened || !summary ? files.length : summary.file_count,
@@ -626,8 +707,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const checklistFile = root ? files.find((f) => f.role === 'checklist') : undefined;
     return {
       path,
-      name: basename(path),
+      name: root ? projectLabel(path) : basename(path),
       project: projectOf(path),
+      access: this.roleIn(path),
       isProjectRoot: root,
       index,
       checklist: checklistFile
@@ -648,7 +730,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async getFile(path: string): Promise<FileDocument> {
     await this.ready();
-    const f = await this.request<FileVersion & { content: string }>('GET', '/v1/file', { query: { path } });
+    const f = await this.fileRequest<FileVersion & { content: string }>('GET', '/v1/file', path);
     const cached = this.cache.get(path);
     // Opening a file is also a chance to notice an agent edit (and keep its diff).
     if (cached && cached.etag !== f.etag && this.state.authors[path] !== f.etag) {
@@ -667,6 +749,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       size: f.size,
       updatedAt: f.uploaded,
       version: f.etag,
+      access: this.roleIn(path),
       ...this.authorOf(path),
       tokenCount: role === 'index' ? Math.round(f.content.length / 3.6) : undefined,
     };
@@ -690,15 +773,17 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   private assertWritable(path: string) {
     if (roleOf(path) === 'index') throw new KBError('read_only', 'index.md è generato automaticamente');
+    this.assertCanWrite(path);
   }
 
   private async put(path: string, content: string, opts: { overwrite: boolean; ifMatch?: string }) {
-    const res = await this.request<{ file: FileVersion }>('PUT', '/v1/file', {
-      query: { path },
+    this.assertCanWrite(path);
+    const res = await this.fileRequest<{ file: FileVersion }>('PUT', '/v1/file', path, {
       body: { content, overwrite: opts.overwrite, ...(opts.ifMatch ? { if_match: opts.ifMatch } : {}) },
     });
-    this.adoptOwn(path, res.file, content);
-    return res.file;
+    const file = { ...res.file, path };
+    this.adoptOwn(path, file, content);
+    return file;
   }
 
   async writeFile(path: string, content: string, baseVersion?: string) {
@@ -735,7 +820,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   async createProject({ name, description, icon, withChecklist }: CreateProjectInput) {
     await this.ready();
     const clean = name.trim();
-    if (!clean || clean.includes('/')) throw new KBError('invalid', 'Nome progetto non valido');
+    if (!clean || clean.includes('/') || clean.includes('@')) throw new KBError('invalid', 'Nome progetto non valido');
     if (this.exists(clean)) throw new KBError('exists', `Il progetto "${clean}" esiste già`);
     this.state.projects[clean] = { description: description.trim(), icon };
     this.state.folders.push(clean);
@@ -758,10 +843,15 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   /** Files and folders under `from` move to `to` (R2 has no rename: the server copies). */
   private async relocate(from: string, to: string) {
     if (from === to) return to;
+    if (teamOf(from) !== teamOf(to)) throw new KBError('invalid', 'Non puoi spostare file tra spazi diversi: per un progetto usa “Sposta nel team”');
+    this.assertCanWrite(from);
     if (this.exists(to)) throw new KBError('exists', `"${basename(to)}" esiste già`);
     const moved = this.files.has(from) ? [from] : this.filesUnder(from);
     const mine = new Set(moved.filter((p) => this.authorOf(p).author === 'you'));
-    if (moved.length) await this.request('POST', '/v1/files/move', { body: { from, to } });
+    if (moved.length) {
+      const a = toWire(from);
+      await this.request('POST', '/v1/files/move', { query: a.owner ? { owner: a.owner } : {}, body: { from: a.path, to: toWire(to).path } });
+    }
     const re = (p: string) => (under(p, from) ? to + p.slice(from.length) : p);
     this.state.folders = this.state.folders.map(re);
     this.state.recentFiles = this.state.recentFiles.map((r) => ({ ...r, path: re(r.path) }));
@@ -795,7 +885,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     await this.loadProjects(path);
     if (this.files.has(path) && roleOf(path) !== 'doc') throw new KBError('read_only', 'I file speciali non si rinominano');
     if (!this.exists(path)) throw new KBError('not_found', 'Elemento non trovato');
-    return this.relocate(path, joinPath(dirname(path), newName));
+    // A team project keeps its team in the key: renaming changes only the name before it.
+    const teamId = teamOf(path);
+    const target = !path.includes('/') && teamId ? teamProjectKey(newName, teamId) : joinPath(dirname(path), newName);
+    return this.relocate(path, target);
   }
 
   async move(path: string, targetFolder: string) {
@@ -834,8 +927,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       ),
       folders: isFile ? [] : [...this.allFolders()].filter((f) => under(f, path)),
     };
-    if (isFile) await this.request('DELETE', '/v1/file', { query: { path } });
-    else if (affected.length) await this.request('DELETE', '/v1/folder', { query: { path } });
+    this.assertCanWrite(path);
+    if (isFile) await this.fileRequest('DELETE', '/v1/file', path);
+    else if (affected.length) await this.fileRequest('DELETE', '/v1/folder', path);
     if (this.state.projects[path]) {
       item.project = { name: path, meta: this.state.projects[path] };
       delete this.state.projects[path];
@@ -1003,7 +1097,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     if (!c.restorable) throw new KBError('invalid', 'Questa modifica non si può ripristinare');
     if (c.before === null) {
       // The agent created the file: undoing it removes the file.
-      await this.request('DELETE', '/v1/file', { query: { path: c.path } });
+      await this.fileRequest('DELETE', '/v1/file', c.path);
       this.files.delete(c.path);
       this.cache.delete(c.path);
       delete this.state.authors[c.path];
@@ -1044,6 +1138,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async deleteTeam(id: string) {
     await this.request('DELETE', `/v1/teams/${encodeURIComponent(id)}`);
+    await this.reconcile(true).catch(() => {});
   }
 
   async listTeamMembers(teamId: string): Promise<TeamMember[]> {
@@ -1066,6 +1161,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async removeMember(teamId: string, userId: string) {
     await this.request('DELETE', `/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`);
+    // Leaving takes the team's projects away from this device.
+    if (userId === this.userId) await this.reconcile(true).catch(() => {});
   }
 
   private toInvite(i: TeamInviteRow): TeamInvite {
@@ -1118,6 +1215,33 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async answerInvite(inviteId: string, accept: boolean) {
     await this.request('POST', `/v1/invites/${encodeURIComponent(inviteId)}/${accept ? 'accept' : 'decline'}`);
+    // The team's projects show up right away.
+    if (accept) await this.reconcile(true).catch(() => {});
+  }
+
+  /** Moves one of the user's own projects into a team they can write to (it stops being personal). */
+  async moveProjectToTeam(project: string, teamId: string) {
+    await this.loadProjects(project);
+    if (teamOf(project)) throw new KBError('invalid', 'Il progetto è già in un team');
+    this.assertCanWrite(teamProjectKey(project, teamId));
+    await this.request('POST', `/v1/projects/${encodeURIComponent(project)}/move-to-team`, { body: { team_id: teamId } });
+    const key = teamProjectKey(project, teamId);
+    const re = (p: string) => (under(p, project) ? key + p.slice(project.length) : p);
+    for (const p of [...this.files.keys(), ...this.cache.keys()]) if (under(p, project)) {
+      this.files.delete(p);
+      this.cache.delete(p);
+      delete this.state.authors[p];
+    }
+    this.loaded.delete(project);
+    this.summaries.delete(project);
+    this.state.folders = this.state.folders.map(re);
+    this.state.recentFiles = this.state.recentFiles.map((r) => ({ ...r, path: re(r.path) }));
+    if (this.state.projects[project]) {
+      this.state.projects[key] = this.state.projects[project];
+      delete this.state.projects[project];
+    }
+    this.persist();
+    await this.reconcile(true);
   }
 
   // ─── settings ─────────────────────────────────────────────────────────────

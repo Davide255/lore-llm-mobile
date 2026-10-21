@@ -9,7 +9,9 @@ import { Banner, ErrorState, HeaderTitle, Loading, ProgressBar, Screen } from '@
 import { actions, attempt, useFile } from '@/data/hooks';
 import { fileSize, relativeTime, thousands } from '@/lib/format';
 import { checklistProgress } from '@/lib/markdown';
+import { projectLabel } from '@/lib/paths';
 import { pathParam, routes } from '@/lib/routes';
+import { canWrite } from '@/lib/teams';
 import { useTheme } from '@/theme';
 
 /** A3 index.md (read-only) · A4 checklist.md · A5 regular document. */
@@ -28,7 +30,7 @@ export default function FileScreen() {
   const subtitle = !doc
     ? undefined
     : doc.role === 'index'
-      ? doc.project
+      ? projectLabel(doc.project)
       : progress
         ? `${progress.done} di ${progress.total} completate`
         : `${fileSize(doc.size)} · ${relativeTime(doc.updatedAt)}`;
@@ -40,7 +42,7 @@ export default function FileScreen() {
         <HeaderItems
           right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => Share.share({ title: name, message: doc.content }) }]}
         />
-      ) : doc ? (
+      ) : doc && canWrite(doc.access) ? (
         <HeaderItems right={[{ kind: 'button', label: 'Modifica', onPress: () => router.push(routes.edit(path)) }]} />
       ) : null}
 
@@ -57,6 +59,11 @@ export default function FileScreen() {
               Indice generato automaticamente. Non modificabile.
             </Banner>
           )}
+          {doc.role !== 'index' && !canWrite(doc.access) && (
+            <Banner icon="lock" tone="neutral" style={{ marginBottom: 18 }}>
+              Sola lettura: sei lettore in questo team.
+            </Banner>
+          )}
           {doc.author === 'agent' && (
             <View style={styles.editedBy}>
               <AgentAvatar agent={doc.agent} size={18} round />
@@ -71,7 +78,7 @@ export default function FileScreen() {
             content={doc.content}
             path={doc.path}
             onToggleTask={
-              doc.role === 'index'
+              doc.role === 'index' || !canWrite(doc.access)
                 ? undefined
                 : (line) => attempt(() => actions.toggleTask(doc, line), 'Impossibile aggiornare la checklist')
             }

@@ -67,3 +67,44 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 }
+
+// ─── Team projects ───────────────────────────────────────────────────────────
+// The first path segment is the project. A team's project is addressed by the key
+// `Name@<teamId>`: the Worker's project names cannot contain "@", so a key never
+// clashes with a personal project, and everything built on "first segment = project"
+// (routes, folders, caches) works unchanged. Only the client talks to the server in
+// terms of (owner, path); `toWire` / `fromWire` are the one translation.
+
+const TEAM_SEP = '@';
+
+export function teamProjectKey(name: string, teamId: string): string {
+  return `${name}${TEAM_SEP}${teamId}`;
+}
+
+export function parseProjectKey(key: string): { name: string; teamId: string | null } {
+  const i = key.lastIndexOf(TEAM_SEP);
+  return i <= 0 ? { name: key, teamId: null } : { name: key.slice(0, i), teamId: key.slice(i + 1) };
+}
+
+/** The team a path belongs to, or null for the user's own space. */
+export function teamOf(path: string): string | null {
+  return parseProjectKey(projectOf(path)).teamId;
+}
+
+/** The project's display name, without the team suffix. */
+export function projectLabel(path: string): string {
+  return parseProjectKey(projectOf(path)).name;
+}
+
+/** A client path as the server sees it: the owner (`t:<teamId>`, or null for the user's own space) and the plain path. */
+export function toWire(path: string): { owner: string | null; path: string } {
+  const [first = '', ...rest] = splitPath(path);
+  const { name, teamId } = parseProjectKey(first);
+  return { owner: teamId ? `t:${teamId}` : null, path: [name, ...rest].join('/') };
+}
+
+/** A server path of a team (or the user's own space, `teamId` null) as a client path. */
+export function fromWire(teamId: string | null, path: string): string {
+  const [first = '', ...rest] = splitPath(path);
+  return [teamId ? teamProjectKey(first, teamId) : first, ...rest].join('/');
+}

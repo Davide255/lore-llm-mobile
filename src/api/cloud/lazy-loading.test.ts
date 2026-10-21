@@ -13,16 +13,11 @@ register('./test-stubs.mjs', import.meta.url);
 const realSetInterval = globalThis.setInterval;
 globalThis.setInterval = ((fn: () => void, ms: number) => realSetInterval(fn, ms).unref()) as unknown as typeof setInterval;
 const { CloudKnowledgeBaseClient } = await import('./cloud-client.ts');
+const { createFakeWorker, fileGets } = await import('./fake-worker.ts');
 
-// ── fake backend ──
-const files = new Map<string, { content: string; uploaded: string }>();
-let version = 1;
-let clock = 0;
-const etagOf = (c: string) => 'e' + [...c].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7).toString(16);
-const put = (path: string, content: string) => {
-  files.set(path, { content, uploaded: new Date(Date.UTC(2026, 0, 1, 0, 0, ++clock)).toISOString() });
-  version++;
-};
+const worker = createFakeWorker();
+globalThis.fetch = worker.fetch;
+const put = (path: string, content: string) => worker.put('', path, content);
 put('Alpha/a.md', 'alpha a');
 put('Alpha/b.md', 'needle in alpha');
 put('Alpha/checklist.md', '- [x] one\n- [ ] two\n');
@@ -30,56 +25,7 @@ put('Alpha/index.md', '# Alpha');
 put('Beta/x.md', 'beta x');
 put('Beta/checklist.md', '- [ ] only\n');
 put('Gamma/g.md', 'gamma g');
-
-const log: string[] = [];
-const meta = (p: string) => ({ path: p, size: files.get(p)!.content.length, uploaded: files.get(p)!.uploaded, etag: etagOf(files.get(p)!.content) });
-const ok = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
-
-globalThis.fetch = (async (input: string, init?: RequestInit) => {
-  const url = new URL(input);
-  const q = url.searchParams;
-  const route = `${init?.method ?? 'GET'} ${url.pathname}`;
-  log.push(q.size ? `${route}?${[...q].map(([k, v]) => `${k}=${v}`).join('&')}` : route);
-  switch (route) {
-    case 'GET /v1/version': return ok({ version, updated_at: null });
-    case 'GET /v1/audit': return ok({ items: [], next_before: null });
-    case 'GET /v1/agents': return ok({ agents: [] });
-    case 'GET /v1/projects': {
-      const by = new Map<string, any>();
-      for (const [path] of files) {
-        const [name, ...rest] = path.split('/');
-        const inP = rest.join('/');
-        const row = by.get(name) ?? { name, file_count: 0, size: 0, updated_at: '', checklist: null };
-        by.set(name, row);
-        row.size += files.get(path)!.content.length;
-        if (inP === 'index.md') continue;
-        row.file_count++;
-        if (files.get(path)!.uploaded > row.updated_at) row.updated_at = files.get(path)!.uploaded;
-        if (inP === 'checklist.md') row.checklist = meta(path);
-      }
-      return ok({ projects: [...by.values()] });
-    }
-    case 'GET /v1/files': {
-      const prefix = q.get('project') ? q.get('project') + '/' : '';
-      return ok({ files: [...files.keys()].filter((p) => p.startsWith(prefix)).sort().map(meta) });
-    }
-    case 'GET /v1/file': {
-      const p = q.get('path')!;
-      return files.has(p) ? ok({ ...meta(p), content: files.get(p)!.content }) : ok({ error: 'Not found' }, 404);
-    }
-    case 'PUT /v1/file': {
-      const body = JSON.parse(init!.body as string);
-      const p = q.get('path')!;
-      if (files.has(p) && !body.overwrite) return ok({ error: 'File already exists' }, 400);
-      put(p, body.content);
-      return ok({ action: 'CREATE', file: meta(p) }, 201);
-    }
-  }
-  return ok({ error: 'unexpected ' + route }, 500);
-}) as typeof fetch;
-
-const take = () => log.splice(0);
-const fileGets = (l: string[]) => l.filter((r) => r.startsWith('GET /v1/file?')).map((r) => r.split('path=')[1]);
+const take = worker.take;
 
 describe('cloud client loading flow', () => {
   const kb = new CloudKnowledgeBaseClient();
