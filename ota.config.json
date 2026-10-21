@@ -1,0 +1,6 @@
+{
+  "baseUrl": "https://www.athly.it/ota/lore/mobile",
+  "platform": "ios",
+  "runtimeVersion": "1",
+  "channels": ["beta", "production"]
+}

@@ -7,6 +7,17 @@
     "icon": "./assets/images/lore-llm-logo.png",
     "scheme": "lorellm",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": "1",
+    "updates": {
+      "url": "https://www.athly.it/ota/lore/mobile/production/ios/manifest.json",
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0,
+      "codeSigningCertificate": "./certs/certificate.pem",
+      "codeSigningMetadata": {
+        "keyid": "main",
+        "alg": "rsa-v1_5-sha256"
+      }
+    },
     "ios": {
       "icon": "./assets/lore-llm.icon",
       "bundleIdentifier": "it.lore.llm",

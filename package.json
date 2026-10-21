@@ -16,6 +16,7 @@
     "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
     "expo-symbols": "~57.0.3",
+    "expo-updates": "~57.0.26",
     "expo-web-browser": "~57.0.3",
     "mathjax-full": "^3.2.2",
     "punycode": "^2.3.1",
@@ -45,7 +46,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "ota:publish": "node scripts/publish-ota.mjs"
   },
   "private": true
 }

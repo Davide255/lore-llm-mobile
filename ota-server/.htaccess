@@ -1,0 +1,30 @@
+# Live-update (OTA) folder for Lore LLM mobile: static files only. See docs/OTA.md.
+Options -Indexes
+
+# Plain 404/403 here: the site-wide error page redirects, and the app follows redirects.
+ErrorDocument 404 "Not found"
+ErrorDocument 403 "Forbidden"
+
+# Expo Updates protocol v1: a single signed manifest per channel/platform.
+# The per-manifest expo-signature header goes in the generated
+# <channel>/ios/.htaccess written by scripts/publish-ota.mjs.
+<FilesMatch "^manifest\.json$">
+  ForceType application/expo+json
+  Header set expo-protocol-version "1"
+  Header set expo-sfv-version "0"
+  Header set expo-manifest-filters ""
+  Header set expo-server-defined-headers ""
+  Header set Cache-Control "private, max-age=0, no-cache, no-store, must-revalidate"
+</FilesMatch>
+
+# Assets are content-hashed and never change.
+<FilesMatch "^[0-9a-f]{32}(\.[A-Za-z0-9]+)?$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+
+# Keep the site's catch-all rewrite (PWA) away from this folder: a missing
+# file must be a real 404, not index.html with status 200.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^ - [L]
+</IfModule>

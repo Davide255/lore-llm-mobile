@@ -1,0 +1,155 @@
+# Live (OTA) updates: exports the JS bundle, signs the manifest and uploads it
+# to the update server. See docs/OTA.md.
+#   prepare -> beta channel        main -> production channel
+# The release version is the "version" in package.json. It is only published
+# once per channel: bump it to release again (or use "force").
+name: OTA update
+
+on:
+  push:
+    branches: [prepare, main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Channel to publish to (auto = from the branch)"
+        type: choice
+        options: [auto, beta, production]
+        default: auto
+      force:
+        description: Publish even if this version is already live
+        type: boolean
+        default: false
+
+concurrency:
+  group: ota-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OTA_FTP_URL: ${{ secrets.OTA_FTP_URL }}
+      OTA_FTP_USER: ${{ secrets.OTA_FTP_USER }}
+      OTA_FTP_PASSWORD: ${{ secrets.OTA_FTP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Pick the channel and the version
+        id: target
+        run: |
+          choice="${{ inputs.channel }}"
+          if [ -z "$choice" ] || [ "$choice" = "auto" ]; then
+            if [ "$GITHUB_REF_NAME" = "main" ]; then choice=production; else choice=beta; fi
+          fi
+          version=$(node -p "require('./package.json').version")
+          base=$(node -p "require('./ota.config.json').baseUrl")
+          platform=$(node -p "require('./ota.config.json').platform")
+          echo "channel=$choice" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "platform=$platform" >> "$GITHUB_OUTPUT"
+
+      # The live manifest carries the version in extra.otaVersion.
+      - name: Skip if this version is already live
+        id: live
+        env:
+          CHANNEL: ${{ steps.target.outputs.channel }}
+          VERSION: ${{ steps.target.outputs.version }}
+          BASE: ${{ steps.target.outputs.base }}
+          PLATFORM: ${{ steps.target.outputs.platform }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          # 404 = nothing published on this channel yet. Any other failure
+          # stops the job: guessing "nothing live" could overwrite a live release.
+          code=$(curl -sS --retry 3 --retry-all-errors --connect-timeout 20 --max-time 60 \
+            -o manifest.json -w '%{http_code}' "$BASE/$CHANNEL/$PLATFORM/manifest.json") \
+            || { echo "::error::Cannot reach $BASE (the server may block GitHub's runners)"; exit 1; }
+          if [ "$code" = "404" ]; then
+            current=none
+          elif [ "$code" = "200" ]; then
+            current=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("manifest.json","utf8")).extra.otaVersion)')
+          else
+            echo "::error::Unexpected HTTP $code from the manifest"; exit 1
+          fi
+          rm -f manifest.json
+          echo "live on $CHANNEL: $current / package.json: $VERSION"
+          if [ "$current" = "$VERSION" ] && [ "$FORCE" != "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### OTA skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Version \`$VERSION\` is already live on \`$CHANNEL\`. Bump \`version\` in package.json to publish a new one." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.live.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Write the signing key
+        if: steps.live.outputs.skip != 'true'
+        env:
+          OTA_PRIVATE_KEY: ${{ secrets.OTA_PRIVATE_KEY }}
+        run: |
+          test -n "$OTA_PRIVATE_KEY" || { echo "::error::Secret OTA_PRIVATE_KEY is empty"; exit 1; }
+          umask 077
+          printf '%s\n' "$OTA_PRIVATE_KEY" > "$RUNNER_TEMP/ota_key"
+          echo "OTA_PRIVATE_KEY_PATH=$RUNNER_TEMP/ota_key" >> "$GITHUB_ENV"
+
+      # The FTP server only sends its own certificate. macOS fills the gap by
+      # downloading the intermediate; Linux does not. Fetch it from the
+      # certificate's "CA Issuers" link and trust it next to the system roots.
+      - name: Complete the FTP server's certificate chain
+        if: steps.live.outputs.skip != 'true'
+        run: |
+          host=$(echo "$OTA_FTP_URL" | sed -E 's#^[a-z]+://##; s#[/].*$##; s#:.*$##')
+          echo "::add-mask::$host"
+          leaf=$(echo | openssl s_client -connect "$host:21" -starttls ftp 2>/dev/null | openssl x509)
+          aia=$(echo "$leaf" | openssl x509 -noout -text | grep -o 'CA Issuers - URI:[^ ]*' | cut -d: -f2- | head -1)
+          test -n "$aia" || { echo "::error::No CA Issuers link in the FTP certificate"; exit 1; }
+          curl -fsS --retry 3 "$aia" -o "$RUNNER_TEMP/inter.crt"
+          openssl x509 -inform DER -in "$RUNNER_TEMP/inter.crt" -out "$RUNNER_TEMP/inter.pem" 2>/dev/null \
+            || cp "$RUNNER_TEMP/inter.crt" "$RUNNER_TEMP/inter.pem"
+          cat /etc/ssl/certs/ca-certificates.crt "$RUNNER_TEMP/inter.pem" > "$RUNNER_TEMP/ftp-ca.pem"
+          echo "OTA_FTP_CACERT=$RUNNER_TEMP/ftp-ca.pem" >> "$GITHUB_ENV"
+
+      - name: Export, sign and upload
+        if: steps.live.outputs.skip != 'true'
+        run: >
+          npm run ota:publish --
+          --channel "${{ steps.target.outputs.channel }}"
+          --version "${{ steps.target.outputs.version }}"
+          --upload
+
+      - name: Verify what the devices will see
+        if: steps.live.outputs.skip != 'true'
+        env:
+          CHANNEL: ${{ steps.target.outputs.channel }}
+          VERSION: ${{ steps.target.outputs.version }}
+          BASE: ${{ steps.target.outputs.base }}
+          PLATFORM: ${{ steps.target.outputs.platform }}
+        run: |
+          curl -fsS --max-time 20 -D headers.txt -o manifest.json "$BASE/$CHANNEL/$PLATFORM/manifest.json"
+          grep -qi '^expo-signature:' headers.txt || { echo "::error::No expo-signature header served"; exit 1; }
+          grep -qi '^content-type: application/expo+json' headers.txt || { echo "::error::Wrong manifest content-type"; exit 1; }
+          live=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("manifest.json","utf8")).extra.otaVersion)')
+          [ "$live" = "$VERSION" ] || { echo "::error::Manifest says $live, expected $VERSION"; exit 1; }
+          url=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("manifest.json","utf8")).launchAsset.url)')
+          curl -fsSI --max-time 20 "$url" | head -1
+          echo "### OTA published" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version \`$VERSION\` is live on \`$CHANNEL\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ota_key"

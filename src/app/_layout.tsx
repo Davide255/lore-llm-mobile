@@ -11,6 +11,7 @@ import { ActionSheetHost } from '@/components/action-sheet';
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
+import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
 import { loadAppearance } from '@/theme/appearance';
 
@@ -24,6 +25,8 @@ export default function RootLayout() {
   // The user whose space the knowledge-base client has loaded (undefined: not yet known).
   const [space, setSpace] = useState<string | null | undefined>(undefined);
   const userId = user === undefined ? undefined : (user?.id ?? null);
+
+  useEffect(() => startOtaUpdates(), []);
 
   useEffect(() => {
     if (userId === undefined) return;

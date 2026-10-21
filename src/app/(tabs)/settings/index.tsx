@@ -1,4 +1,5 @@
 import { SegmentedControl } from '@expo/ui/community/segmented-control';
+import Constants from 'expo-constants';
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert } from 'react-native';
@@ -8,6 +9,7 @@ import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
+import { checkForOtaUpdate, currentOtaLabel, otaEnabled, otaPhase as otaPhaseSignal, type OtaPhase } from '@/lib/ota';
 import { routes } from '@/lib/routes';
 import { useTheme } from '@/theme';
 import { setAppearance, useAppearance, type AppearancePreference } from '@/theme/appearance';
@@ -18,6 +20,15 @@ const appearanceOptions: { value: AppearancePreference; label: string }[] = [
   { value: 'dark', label: 'Scuro' },
 ];
 
+const otaStatusLabels: Record<OtaPhase, string> = {
+  idle: 'Nessun controllo',
+  checking: 'Controllo…',
+  downloading: 'Download in corso…',
+  ready: 'Scaricato: si installa al prossimo avvio',
+  current: 'Aggiornato',
+  error: 'Impossibile controllare',
+};
+
 /** F3 — Settings. Per-agent permissions are the only place that decides who writes. */
 export default function SettingsScreen() {
   const t = useTheme();
@@ -27,6 +38,7 @@ export default function SettingsScreen() {
   const agents = useAgents();
   const [syncing, setSyncing] = useState(false);
   const appearance = useAppearance();
+  const otaPhase = otaPhaseSignal.useValue();
   const s = settings.data;
 
   const sync = async () => {
@@ -94,6 +106,16 @@ export default function SettingsScreen() {
             title="Collega un agente"
             titleColor={t.accentText}
             onPress={() => router.push(routes.connectAgent())}
+          />
+        </Section>
+
+        <Section header="Versione e aggiornamenti">
+          <Cell
+            icon={<IconWell name={otaPhase === 'checking' || otaPhase === 'downloading' ? 'sync' : 'cloudDone'} />}
+            title="Controlla aggiornamenti"
+            subtitle={`${Constants.expoConfig?.version ?? ''} · ${currentOtaLabel()} · ${otaStatusLabels[otaPhase]}`}
+            right={otaPhase === 'checking' || otaPhase === 'downloading' ? <ActivityIndicator color={t.textMuted} /> : undefined}
+            onPress={otaEnabled && otaPhase !== 'checking' && otaPhase !== 'downloading' ? () => void checkForOtaUpdate({ force: true }) : undefined}
           />
         </Section>
 

@@ -29,8 +29,10 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+!certs/certificate.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
@@ -43,3 +45,6 @@ example
 /android
 
 /ref
+
+# Live updates (OTA): staged bundles. The signing key lives in ~/.lore-llm-ota, never in the repo.
+ota-dist/
