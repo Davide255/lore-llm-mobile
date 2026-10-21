@@ -42,10 +42,12 @@ import { CHECKLIST_FILE, basename, dirname, joinPath, projectOf, roleOf, splitPa
 
 /**
  * The knowledge base in the user's cloud space (R2 behind the lore-llm
- * Worker). The app mirrors `/v1/files` (contents refetched only when the
- * etag changes), keeps empty folders and project metadata on the device —
- * object storage has neither — and polls the audit log to pick up agent
- * writes, keeping a diff of each one it sees happen.
+ * Worker). Launch loads the project list and each project's checklist
+ * (`/v1/projects`); a project's files are mirrored (`/v1/files?project=`,
+ * contents refetched only when the etag changes) the first time it is opened.
+ * Empty folders and project metadata live on the device — object storage has
+ * neither — and a cheap `/v1/version` poll tells when to look at the audit log
+ * to pick up agent writes, keeping a diff of each one it sees happen.
  */
 
 export const API_URL = (process.env.EXPO_PUBLIC_LORE_API_URL ?? 'https://lore-llm-dev.davide-bera2021.workers.dev').replace(/\/+$/, '');
@@ -62,6 +64,19 @@ interface FileVersion {
   uploaded: string;
   etag: string;
 }
+
+/** One row of `GET /v1/projects`: what the project list needs without opening the project. */
+interface ProjectSummary {
+  name: string;
+  /** Notes, without the generated index. */
+  file_count: number;
+  size: number;
+  /** Newest note; empty when the project has none. */
+  updated_at: string;
+  checklist: { path: string; etag: string; size: number; uploaded: string } | null;
+}
+
+type FileChange = { path: string; before: string | null; after: string | null };
 
 /** Per-user state kept on the device. */
 interface Persisted {
@@ -128,7 +143,14 @@ function indexSummary(content = '') {
 export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private userId: string | null = null;
   private state: Persisted = emptyState();
+  /** Files of the projects that were opened, plus the checklist of every project. */
   private files = new Map<string, FileVersion>();
+  private summaries = new Map<string, ProjectSummary>();
+  /** Projects whose files are mirrored (opened at least once this session). */
+  private loaded = new Set<string>();
+  private loading = new Map<string, Promise<void>>();
+  /** Server change cursor at the last sync: while it is unchanged there is nothing to fetch. */
+  private version: number | null = null;
   private cache = new Map<string, { etag: string; content: string }>();
   private writers = new Map<string, Writer>();
   private audit: AuditRow[] = [];
@@ -152,6 +174,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     this.userId = id;
     this.state = emptyState();
     this.files = new Map();
+    this.summaries = new Map();
+    this.loaded = new Set();
+    this.loading = new Map();
+    this.version = null;
     this.cache = new Map();
     this.writers = new Map();
     this.audit = [];
@@ -224,13 +250,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   // ─── mirror ───────────────────────────────────────────────────────────────
 
-  /** Re-list the space and pull changed contents. Returns what changed. */
-  private async syncFiles() {
-    const { files: list } = await this.request<{ files: FileVersion[] }>('GET', '/v1/files');
-    const next = new Map(list.map((f) => [f.path, f]));
-    const changes: { path: string; before: string | null; after: string | null }[] = [];
-    const stale = list.filter((f) => this.cache.get(f.path)?.etag !== f.etag);
-    const queue = [...stale];
+  /** Download the contents of the files whose cached etag differs, recording them in `into`. */
+  private async fetchStale(list: FileVersion[], into: Map<string, FileVersion>): Promise<FileChange[]> {
+    const changes: FileChange[] = [];
+    const queue = list.filter((f) => this.cache.get(f.path)?.etag !== f.etag);
     await Promise.all(
       Array.from({ length: Math.min(6, queue.length) }, async () => {
         for (let f = queue.shift(); f; f = queue.shift()) {
@@ -238,24 +261,97 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
           try {
             const got = await this.request<FileVersion & { content: string }>('GET', '/v1/file', { query: { path: f.path } });
             this.cache.set(f.path, { etag: got.etag, content: got.content });
-            next.set(f.path, { path: f.path, size: got.size, uploaded: got.uploaded, etag: got.etag });
+            into.set(f.path, { path: f.path, size: got.size, uploaded: got.uploaded, etag: got.etag });
             changes.push({ path: f.path, before, after: got.content });
           } catch {
-            next.delete(f.path); // deleted between list and get
+            into.delete(f.path); // deleted between list and get
           }
         }
       }),
     );
-    for (const [path, c] of this.cache) {
-      if (!next.has(path)) {
+    return changes;
+  }
+
+  /** Forget a project that is gone from the server. */
+  private dropProject(name: string, changes: FileChange[]) {
+    for (const path of [...this.files.keys(), ...this.cache.keys()]) {
+      if (!under(path, name)) continue;
+      const c = this.cache.get(path);
+      if (c) changes.push({ path, before: c.content, after: null });
+      this.cache.delete(path);
+      this.files.delete(path);
+    }
+    this.loaded.delete(name);
+    this.summaries.delete(name);
+  }
+
+  /**
+   * The project list and every project's checklist: one listing plus the checklists
+   * that changed. Projects that were opened keep their checklist up to date through
+   * `syncProject`.
+   */
+  private async syncSummaries(): Promise<FileChange[]> {
+    const { projects } = await this.request<{ projects: ProjectSummary[] }>('GET', '/v1/projects');
+    const changes: FileChange[] = [];
+    const next = new Map(projects.map((p) => [p.name, p]));
+    for (const name of [...this.summaries.keys()]) if (!next.has(name)) this.dropProject(name, changes);
+    this.summaries = next;
+
+    const checklists: FileVersion[] = [];
+    for (const p of projects) {
+      if (this.loaded.has(p.name)) continue;
+      const path = joinPath(p.name, CHECKLIST_FILE);
+      if (p.checklist) {
+        const meta = { path: p.checklist.path, size: p.checklist.size, uploaded: p.checklist.uploaded, etag: p.checklist.etag };
+        this.files.set(meta.path, meta);
+        checklists.push(meta);
+      } else {
+        this.files.delete(path);
+        const c = this.cache.get(path);
+        if (c) changes.push({ path, before: c.content, after: null });
         this.cache.delete(path);
-        changes.push({ path, before: c.content, after: null });
       }
     }
-    this.files = next;
-    // Folders that now have files no longer need to be remembered.
-    this.state.folders = this.state.folders.filter((f) => ![...next.keys()].some((p) => under(p, f)));
+    changes.push(...(await this.fetchStale(checklists, this.files)));
     return changes;
+  }
+
+  /** Re-list one project and pull changed contents. Returns what changed. */
+  private async syncProject(project: string): Promise<FileChange[]> {
+    const { files: list } = await this.request<{ files: FileVersion[] }>('GET', '/v1/files', { query: { project } });
+    const next = new Map(list.map((f) => [f.path, f]));
+    const changes = await this.fetchStale(list, next);
+    for (const path of [...this.files.keys(), ...this.cache.keys()]) {
+      if (!under(path, project) || next.has(path)) continue;
+      const c = this.cache.get(path);
+      if (c) changes.push({ path, before: c.content, after: null });
+      this.cache.delete(path);
+      this.files.delete(path);
+    }
+    for (const [path, f] of next) this.files.set(path, f);
+    this.loaded.add(project);
+    // Folders that now have files no longer need to be remembered.
+    this.state.folders = this.state.folders.filter((f) => projectOf(f) !== project || ![...next.keys()].some((p) => under(p, f)));
+    return changes;
+  }
+
+  /** Mirror a project's files the first time it is needed (opening it, changing it). */
+  private loadProject(project: string): Promise<void> {
+    if (!project || this.loaded.has(project)) return Promise.resolve();
+    let pending = this.loading.get(project);
+    if (!pending) {
+      pending = (async () => {
+        await this.ready();
+        // Unknown names (a project not created yet) have nothing to load.
+        if (!this.loaded.has(project) && this.projectNames().includes(project)) await this.syncProject(project);
+      })().finally(() => this.loading.delete(project));
+      this.loading.set(project, pending);
+    }
+    return pending;
+  }
+
+  private async loadProjects(...paths: string[]) {
+    await Promise.all([...new Set(paths.map(projectOf))].map((p) => this.loadProject(p)));
   }
 
   private async refreshAgents(): Promise<AgentRow[]> {
@@ -265,9 +361,21 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return agents;
   }
 
+  /** The server's change cursor, or null when it cannot say (then every poll syncs). */
+  private async serverVersion(): Promise<number | null> {
+    try {
+      return (await this.request<{ version: number }>('GET', '/v1/version')).version;
+    } catch (err) {
+      if (err instanceof KBError && err.code === 'network') throw err;
+      return null;
+    }
+  }
+
   private ready() {
     this.primed ??= (async () => {
-      await this.syncFiles();
+      // The cursor is read first: a change made while syncing shows up at the next poll.
+      const version = await this.serverVersion();
+      await this.syncSummaries();
       const [{ items }] = await Promise.all([
         this.request<{ items: AuditRow[] }>('GET', '/v1/audit', { query: { limit: AUDIT_WINDOW } }),
         this.refreshAgents(),
@@ -276,6 +384,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       this.writers = new Map();
       applyAudit(this.writers, items);
       this.state.lastLogId = items[0]?.log_id ?? 0;
+      this.version = version;
       this.state.lastSyncAt = iso();
       this.persist();
     })().catch((err) => {
@@ -290,8 +399,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
    * the files. A change with a matching new audit row is the agent's and is
    * kept with its diff; anything else came from the user's other apps.
    */
-  private reconcile(): Promise<string[]> {
+  private reconcile(force = false): Promise<string[]> {
     const run = async () => {
+      const version = await this.serverVersion();
+      if (!force && version !== null && version === this.version) return [];
       const { items } = await this.request<{ items: AuditRow[] }>('GET', '/v1/audit', { query: { limit: 50 } });
       const after = this.state.lastLogId;
       const fresh = items.filter((r) => r.log_id > after);
@@ -301,7 +412,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
         // An agent created elsewhere (another device): learn its identity first.
         if (fresh.some((r) => !this.state.agentRefs[r.agent_id])) await this.refreshAgents().catch(() => {});
       }
-      const changes = await this.syncFiles();
+      const changes = await this.syncSummaries();
+      for (const project of [...this.loaded]) changes.push(...(await this.syncProject(project)));
+      this.version = version;
       for (const ch of changes) {
         if (roleOf(ch.path) === 'index' || this.state.authors[ch.path] === this.files.get(ch.path)?.etag) continue;
         const row = fresh.find((r) => r.target_path === ch.path); // newest first
@@ -353,7 +466,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   /** After the app's own writes: the server recompiled index.md, so pull it. */
   private async afterWrite() {
-    await this.reconcile().catch(() => {});
+    // Forced: the cursor bump on the server is best effort, and index.md must be pulled.
+    await this.reconcile(true).catch(() => {});
   }
 
   private adoptOwn(path: string, file: FileVersion, content: string) {
@@ -383,6 +497,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     for (const p of this.files.keys()) add(dirname(p));
     this.state.folders.forEach(add);
     Object.keys(this.state.projects).forEach(add);
+    for (const name of this.summaries.keys()) add(name);
     return out;
   }
 
@@ -420,9 +535,12 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   private toProject(name: string): Project {
+    // Opened projects are counted from their files; the others from the project list.
+    const summary = this.summaries.get(name);
     const files = this.filesUnder(name)
       .filter((p) => roleOf(p) !== 'index')
       .map((p) => this.files.get(p)!);
+    const opened = this.loaded.has(name);
     const checklist = this.cache.get(joinPath(name, CHECKLIST_FILE));
     const progress = checklist ? checklistProgress(checklist.content) : null;
     const meta = this.state.projects[name];
@@ -430,9 +548,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       name,
       description: meta?.description || indexSummary(this.cache.get(joinPath(name, 'index.md'))?.content),
       icon: meta?.icon ?? 'folder',
-      fileCount: files.length,
+      fileCount: opened || !summary ? files.length : summary.file_count,
       // The compiled index doesn't count as user/agent activity.
-      updatedAt: files.reduce((max, f) => (f.uploaded > max ? f.uploaded : max), ''),
+      updatedAt: opened || !summary ? files.reduce((max, f) => (f.uploaded > max ? f.uploaded : max), '') : summary.updated_at,
       checklist: progress && progress.total > 0 ? progress : null,
     };
   }
@@ -445,11 +563,11 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async getSummary() {
     await this.ready();
-    const files = [...this.files.values()];
+    const projects = [...this.summaries.values()];
     return {
       projectCount: this.projectNames().length,
-      fileCount: files.filter((f) => roleOf(f.path) !== 'index').length,
-      totalBytes: files.reduce((n, f) => n + f.size, 0),
+      fileCount: projects.reduce((n, p) => n + p.file_count, 0),
+      totalBytes: projects.reduce((n, p) => n + p.size, 0),
     };
   }
 
@@ -467,7 +585,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async listFolder(path: string): Promise<FolderListing> {
-    await this.ready();
+    await this.loadProjects(path);
     const folders = this.allFolders();
     if (!folders.has(path)) throw new KBError('not_found', `Cartella "${path}" non trovata`);
     const root = splitPath(path).length === 1;
@@ -492,7 +610,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async listFolderTree(project: string) {
-    await this.ready();
+    await this.loadProjects(project);
     return [...this.allFolders()].filter((f) => projectOf(f) === project).sort();
   }
 
@@ -525,7 +643,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   async listRecentFiles(limit = 5) {
     await this.ready();
     return this.state.recentFiles
-      .filter((r) => this.files.has(r.path))
+      // Files of projects that were not opened yet cannot be checked: keep them if their project exists.
+      .filter((r) => (this.loaded.has(projectOf(r.path)) ? this.files.has(r.path) : this.projectNames().includes(projectOf(r.path))))
       .slice(0, limit)
       .map((r) => ({ ...r, name: basename(r.path), project: projectOf(r.path), role: roleOf(r.path) }));
   }
@@ -562,6 +681,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     await this.ready();
     const path = joinPath(parent, name);
     if (!parent) throw new KBError('invalid', 'I file devono stare dentro un progetto');
+    await this.loadProjects(parent);
     if (this.exists(path)) throw new KBError('exists', `"${name}" esiste già`);
     this.assertWritable(path);
     await this.put(path, content, { overwrite: false });
@@ -573,6 +693,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   async createFolder(parent: string, name: string) {
     await this.ready();
     const path = joinPath(parent, name);
+    await this.loadProjects(path);
     if (this.exists(path)) throw new KBError('exists', `"${name}" esiste già`);
     this.state.folders.push(path);
     this.persist();
@@ -623,7 +744,13 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       this.cache.delete(p);
       delete this.state.authors[p];
     }
-    await this.syncFiles();
+    // Re-mirror what the move touched; a renamed project's old name is gone.
+    for (const project of new Set([projectOf(from), projectOf(to)])) await this.syncProject(project);
+    if (!from.includes('/')) {
+      this.loaded.delete(from);
+      this.summaries.delete(from);
+    }
+    await this.syncSummaries();
     for (const p of mine) {
       const f = this.files.get(re(p));
       if (f) this.state.authors[re(p)] = f.etag;
@@ -633,14 +760,14 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async rename(path: string, newName: string) {
-    await this.ready();
+    await this.loadProjects(path);
     if (this.files.has(path) && roleOf(path) !== 'doc') throw new KBError('read_only', 'I file speciali non si rinominano');
     if (!this.exists(path)) throw new KBError('not_found', 'Elemento non trovato');
     return this.relocate(path, joinPath(dirname(path), newName));
   }
 
   async move(path: string, targetFolder: string) {
-    await this.ready();
+    await this.loadProjects(path, targetFolder);
     if (!this.allFolders().has(targetFolder)) throw new KBError('not_found', `Cartella "${targetFolder}" non trovata`);
     if (roleOf(path) !== 'doc') throw new KBError('read_only', 'I file speciali non si spostano');
     if (under(targetFolder, path)) throw new KBError('invalid', 'Non puoi spostare una cartella dentro sé stessa');
@@ -648,7 +775,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async duplicate(path: string) {
-    await this.ready();
+    await this.loadProjects(path);
     if (!this.files.has(path)) throw new KBError('not_found', 'File non trovato');
     const content = this.cache.get(path)?.content ?? (await this.getFile(path)).content;
     const stem = basename(path).replace(/\.md$/, '');
@@ -662,7 +789,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   // Delete = keep the contents in memory, remove on the server; undo writes them back.
   async remove(path: string): Promise<DeleteReceipt> {
-    await this.ready();
+    await this.loadProjects(path);
     this.assertWritable(path);
     const isFile = this.files.has(path);
     if (!isFile && !this.allFolders().has(path)) throw new KBError('not_found', 'Elemento non trovato');
@@ -682,6 +809,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
       delete this.state.projects[path];
     }
     this.state.folders = this.state.folders.filter((f) => !under(f, path));
+    if (!path.includes('/')) {
+      this.loaded.delete(path);
+      this.summaries.delete(path);
+    }
     for (const p of affected) {
       this.cache.delete(p);
       this.files.delete(p);
@@ -712,6 +843,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async search(query: string, project?: string | null): Promise<SearchResponse> {
     await this.ready();
+    // Search reads the mirrored text, so it is the one place that opens every project (or just the one asked for).
+    for (const name of project ? [project] : this.projectNames()) await this.loadProject(name);
     const q = query.trim().toLowerCase();
     if (!q) return { query, totalMatches: 0, hits: [], byProject: [] };
     const count = (text: string) => {
@@ -825,6 +958,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     await this.ready();
     const c = this.state.changes[id];
     if (!c) throw new KBError('not_found', 'Modifica non trovata');
+    await this.loadProjects(c.path);
     // Restorable while the file is still as the agent left it.
     const current = this.files.has(c.path) ? (this.cache.get(c.path)?.content ?? null) : null;
     // A renamed agent shows its current name; a revoked one keeps the snapshot.
@@ -859,7 +993,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async sync() {
     await this.ready();
-    await this.reconcile();
+    await this.reconcile(true);
     return this.getSettings();
   }
 }
