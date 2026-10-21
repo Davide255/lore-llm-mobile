@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { Fragment, useMemo, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle } from 'react-native';
 
 import { Icon } from './icon';
 import { InlineMath, lineHeightWithMath, MathBlock } from './math';
-import { parse, parseInline, type Block, type Inline } from '@/lib/markdown';
+import { parse, parseInline, parseTable, type Block, type Inline } from '@/lib/markdown';
 import { resolveLink } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { fonts, useTheme, type Theme } from '@/theme';
@@ -172,9 +172,54 @@ function BlockView({
       );
       return b.lang === 'math' ? <MathBlock tex={b.text} fontSize={styles.p.fontSize} color={t.text} fallback={code} /> : code;
     }
+    case 'table':
+      return <TableView source={b.text} path={path} t={t} />;
     case 'rule':
       return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
   }
+}
+
+/**
+ * Laid out column by column so each column sizes to its widest cell; cells
+ * never wrap (the table scrolls horizontally instead), which keeps rows aligned.
+ */
+function TableView({ source, path, t }: { source: string; path: string; t: Theme }) {
+  const { header, align, rows } = useMemo(() => parseTable(source), [source]);
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.table, { borderColor: t.hairline, backgroundColor: t.cell }]}
+      contentContainerStyle={{ flexGrow: 1 }}>
+      {header.map((h, c) => {
+        const textAlign = align[c] ?? 'left';
+        const border = c > 0 && { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.hairline };
+        return (
+          <View key={c} style={[styles.column, border]}>
+            <View
+              style={[
+                styles.th,
+                { backgroundColor: t.fillSubtle },
+                rows.length > 0 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.hairline },
+              ]}>
+              <Text style={[styles.cellText, { color: t.text, fontWeight: '600', textAlign }]}>
+                <InlineText source={h} path={path} t={t} fontSize={styles.cellText.fontSize} lineHeight={styles.cellText.lineHeight} color={t.text} />
+              </Text>
+            </View>
+            {rows.map((r, i) => (
+              <View
+                key={i}
+                style={[styles.td, i < rows.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.hairline }]}>
+                <Text style={[styles.cellText, { color: t.textBody, textAlign }]}>
+                  <InlineText source={r[c]} path={path} t={t} fontSize={styles.cellText.fontSize} lineHeight={styles.cellText.lineHeight} color={t.textBody} />
+                </Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -196,4 +241,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   code: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12 },
+  table: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, marginBottom: 12, flexGrow: 0 },
+  column: { flexGrow: 1, flexShrink: 0 },
+  // Cells are one line, so a fixed height keeps rows aligned across columns
+  // even when inline spans (e.g. monospace code) have different metrics.
+  th: { height: 37, justifyContent: 'center', paddingHorizontal: 12 },
+  td: { height: 37, justifyContent: 'center', paddingHorizontal: 12 },
+  cellText: { fontSize: 13.5, lineHeight: 20 },
 });

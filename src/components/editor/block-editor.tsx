@@ -79,7 +79,8 @@ export function BlockEditor({
   }));
 
   const onChangeText = (b: EditBlock, text: string) => {
-    const nl = b.type === 'code' ? -1 : text.indexOf('\n');
+    // Code and tables are edited as raw multi-line source.
+    const nl = b.type === 'code' || b.type === 'table' ? -1 : text.indexOf('\n');
     if (nl === -1) {
       update(b.id, (x) => ({ ...x, text }) as EditBlock);
       return;
@@ -102,7 +103,7 @@ export function BlockEditor({
   const onBackspaceAtStart = (b: EditBlock) => {
     const sel = selections.current.get(b.id);
     if (sel && (sel.start !== 0 || sel.end !== 0)) return;
-    if (b.type !== 'paragraph' && b.type !== 'code') {
+    if (b.type !== 'paragraph' && b.type !== 'code' && b.type !== 'table') {
       update(b.id, asParagraph);
       return;
     }
@@ -185,6 +186,7 @@ function BlockRow({
             ? { fontSize: 16, lineHeight: 21, fontWeight: '600', color: t.text }
             : { fontSize: 14.5, lineHeight: 20, fontWeight: '600', color: t.text };
       case 'code':
+      case 'table':
         return { fontFamily: fonts.mono, fontSize: 12, lineHeight: 19, color: t.textSecondary };
       case 'quote':
         return { fontSize: 13.5, lineHeight: 21, color: t.textSecondary };
@@ -220,8 +222,8 @@ function BlockRow({
       placeholderTextColor={t.textMuted}
       selectionColor={t.accentText}
       cursorColor={t.accentText}
-      autoCorrect={b.type !== 'code'}
-      autoCapitalize={b.type === 'code' ? 'none' : 'sentences'}
+      autoCorrect={b.type !== 'code' && b.type !== 'table'}
+      autoCapitalize={b.type === 'code' || b.type === 'table' ? 'none' : 'sentences'}
       style={[styles.input, textStyle, { flex: 1 }]}
     />
   );
@@ -235,7 +237,7 @@ function BlockRow({
         { marginLeft: indent },
         focused && { backgroundColor: t.accentSoft },
         b.type === 'quote' && { borderLeftWidth: 3, borderLeftColor: t.accent, backgroundColor: focused ? t.accentSoft : t.cell, paddingLeft: 12 },
-        b.type === 'code' && { backgroundColor: focused ? t.accentSoft : t.cell, paddingHorizontal: 12, paddingVertical: 8 },
+        (b.type === 'code' || b.type === 'table') && { backgroundColor: focused ? t.accentSoft : t.cell, paddingHorizontal: 12, paddingVertical: 8 },
       ]}>
       {b.type === 'bullet' && <Text style={[styles.marker, { color: t.accentText }]}>•</Text>}
       {b.type === 'ordered' && <Text style={[styles.marker, { color: t.accentText, minWidth: 18 }]}>{b.n}.</Text>}
