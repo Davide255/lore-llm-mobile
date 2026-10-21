@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert } from 'react-native';
 
 import { authUser, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
+import { McpLinkSection } from '@/components/mcp-link';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
@@ -96,6 +97,8 @@ export default function SettingsScreen() {
             onPress={() => router.push(routes.connectAgent())}
           />
         </Section>
+
+        <McpLinkSection />
 
         <SectionHeader>Aspetto</SectionHeader>
         <SegmentedControl

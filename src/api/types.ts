@@ -217,6 +217,8 @@ export interface KBSettings {
   lastSyncAt: ISODate | null;
   /** Host of the Lore server the app talks to. */
   server: string;
+  /** The MCP endpoint: what a connector (Claude, ChatGPT) is pointed at; it signs in through OAuth. */
+  mcpUrl: string;
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────

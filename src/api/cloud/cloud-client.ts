@@ -52,6 +52,8 @@ import { CHECKLIST_FILE, basename, dirname, joinPath, projectOf, roleOf, splitPa
 
 export const API_URL = (process.env.EXPO_PUBLIC_LORE_API_URL ?? 'https://lore-llm-dev.davide-bera2021.workers.dev').replace(/\/+$/, '');
 
+const MCP_URL = `${API_URL}/mcp`;
+
 // How often agent writes are looked for (one cheap audit query) while the app is in the foreground.
 const POLL_MS = 10_000;
 // How far back the audit log is read to attribute existing files.
@@ -922,7 +924,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const agent = this.toAgent(res.agent);
     this.state.agentRefs[agent.id] = { name: agent.name, kind: agent.kind };
     this.persist();
-    return { agent, token: res.token, expiresAt: res.expires_at, mcpUrl: `${API_URL}/mcp` };
+    return { agent, token: res.token, expiresAt: res.expires_at, mcpUrl: MCP_URL };
   }
 
   async updateAgent(id: string, patch: AgentPatch) {
@@ -988,7 +990,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   // ─── settings ─────────────────────────────────────────────────────────────
 
   async getSettings(): Promise<KBSettings> {
-    return { lastSyncAt: this.state.lastSyncAt, server: API_URL.replace(/^https?:\/\//, '') };
+    return { lastSyncAt: this.state.lastSyncAt, server: API_URL.replace(/^https?:\/\//, ''), mcpUrl: MCP_URL };
   }
 
   async sync() {
