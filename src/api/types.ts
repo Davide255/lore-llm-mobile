@@ -211,6 +211,52 @@ export interface Change {
   restorable: boolean;
 }
 
+// ─── Teams ───────────────────────────────────────────────────────────────────
+
+/** What a person may do in a team's files: owners also manage the team, editors write, viewers read. */
+export type TeamRole = 'owner' | 'editor' | 'viewer';
+
+/** Roles an invitation can grant (owners are made by promoting a member). */
+export type InviteRole = Exclude<TeamRole, 'owner'>;
+
+export interface Team {
+  id: string;
+  name: string;
+  /** The signed-in user's role in the team. */
+  role: TeamRole;
+  createdAt: ISODate;
+}
+
+export interface TeamMember {
+  userId: string;
+  role: TeamRole;
+  joinedAt: ISODate;
+  name: string | null;
+  email: string | null;
+  isYou: boolean;
+}
+
+/** An invitation sent by the team, still waiting for an answer. */
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: InviteRole;
+  createdAt: ISODate;
+  expiresAt: ISODate;
+}
+
+/** An invitation addressed to the signed-in user. */
+export interface MyInvite {
+  id: string;
+  teamId: string;
+  teamName: string;
+  role: TeamRole;
+  /** Who sent it: name, else email. */
+  invitedBy: string | null;
+  createdAt: ISODate;
+  expiresAt: ISODate;
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface KBSettings {

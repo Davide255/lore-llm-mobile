@@ -23,6 +23,16 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
   return new Date(t).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 }
 
+/** "scade oggi", "scade domani", "scade tra 5 giorni", "scaduto". */
+export function expiresIn(iso: string, now = Date.now()): string {
+  const t = new Date(iso).getTime();
+  if (t <= now) return 'scaduto';
+  const days = Math.round((startOfDay(new Date(t)) - startOfDay(new Date(now))) / DAY);
+  if (days === 0) return 'scade oggi';
+  if (days === 1) return 'scade domani';
+  return `scade tra ${days} giorni`;
+}
+
 /** Like relativeTime, but "ieri 18:20" instead of "ieri". */
 export function eventTime(iso: string, now = Date.now()): string {
   const rel = relativeTime(iso, now);

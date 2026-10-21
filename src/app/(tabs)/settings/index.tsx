@@ -5,11 +5,13 @@ import { ActivityIndicator, Alert } from 'react-native';
 
 import { authUser, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
+import { PendingInvites } from '@/components/invites';
 import { McpLinkSection } from '@/components/mcp-link';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
-import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
+import { actions, attempt, useAgents, useSettings, useSummary, useTeams } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
+import { ROLE_LABEL } from '@/lib/teams';
 import { useTheme } from '@/theme';
 import { setAppearance, useAppearance, type AppearancePreference } from '@/theme/appearance';
 
@@ -26,6 +28,7 @@ export default function SettingsScreen() {
   const settings = useSettings();
   const summary = useSummary();
   const agents = useAgents();
+  const teams = useTeams();
   const [syncing, setSyncing] = useState(false);
   const appearance = useAppearance();
   const s = settings.data;
@@ -70,6 +73,27 @@ export default function SettingsScreen() {
             right={syncing ? <ActivityIndicator color={t.textMuted} /> : undefined}
             chevron={!syncing}
             onPress={syncing ? undefined : sync}
+          />
+        </Section>
+
+        <PendingInvites />
+
+        <Section header="Team" footer="Condividi progetti con altre persone: ognuna ha il suo ruolo (proprietario, editor, sola lettura).">
+          {(teams.data ?? []).map((team) => (
+            <Cell
+              key={team.id}
+              icon={<IconWell name="team" />}
+              title={team.name}
+              subtitle={ROLE_LABEL[team.role]}
+              chevron
+              onPress={() => router.push(routes.team(team.id))}
+            />
+          ))}
+          <Cell
+            icon={<IconWell name="add" background="transparent" />}
+            title="Crea un team"
+            titleColor={t.accentText}
+            onPress={() => router.push(routes.newTeam())}
           />
         </Section>
 

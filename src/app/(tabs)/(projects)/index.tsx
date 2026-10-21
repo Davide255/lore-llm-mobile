@@ -5,9 +5,10 @@ import { RefreshControl, Text, View } from 'react-native';
 import type { Project } from '@/api';
 import { EntryRow } from '@/components/entry-row';
 import { HeaderItems } from '@/components/header-items';
+import { PendingInvites } from '@/components/invites';
 import { projectIcons } from '@/components/icon';
 import { Cell, EmptyState, ErrorState, IconWell, Loading, ProgressBar, Screen, Section } from '@/components/ui';
-import { useProjects, useRecentFiles, useSummary } from '@/data/hooks';
+import { useMyInvites, useProjects, useRecentFiles, useSummary } from '@/data/hooks';
 import { plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
 import { useTheme, type Theme } from '@/theme';
@@ -25,6 +26,7 @@ export default function ProjectsScreen() {
   const projects = useProjects();
   const summary = useSummary();
   const recent = useRecentFiles(3);
+  const invites = useMyInvites();
   const [filter, setFilter] = useState('');
 
   const visible = (projects.data ?? []).filter((p) => p.name.toLowerCase().includes(filter.trim().toLowerCase()));
@@ -41,8 +43,9 @@ export default function ProjectsScreen() {
       ) : (
         <Screen
           refreshControl={
-            <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh()])} />
+            <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh(), invites.refresh()])} />
           }>
+          {!filter && <PendingInvites />}
           {visible.length === 0 ? (
             <EmptyState
               icon="folder"

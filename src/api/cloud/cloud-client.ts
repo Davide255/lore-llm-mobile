@@ -17,12 +17,18 @@ import {
   type FileEntry,
   type FolderEntry,
   type FolderListing,
+  type InviteRole,
   type KBSettings,
+  type MyInvite,
   type NewAgent,
   type Project,
   type ProjectIcon,
   type SearchHit,
   type SearchResponse,
+  type Team,
+  type TeamInvite,
+  type TeamMember,
+  type TeamRole,
 } from '../types';
 import {
   applyAudit,
@@ -78,6 +84,21 @@ interface ProjectSummary {
   checklist: { path: string; etag: string; size: number; uploaded: string } | null;
 }
 
+/** Team rows as the Worker sends them. */
+interface TeamRow {
+  id: string;
+  name: string;
+  role: TeamRole;
+  created_at: string;
+}
+interface TeamInviteRow {
+  id: string;
+  email: string;
+  role: InviteRole;
+  created_at: string;
+  expires_at: string;
+}
+
 type FileChange = { path: string; before: string | null; after: string | null };
 
 /** Per-user state kept on the device. */
@@ -125,7 +146,16 @@ const changeId = (logId: number) => `c${logId}`;
 // Server messages are English; the UI is Italian.
 function toError(status: number, error: string | undefined): KBError {
   if (status === 401) return new KBError('invalid', 'Sessione non valida: esci e accedi di nuovo');
+  if (status === 403) return new KBError('read_only', 'Non hai i permessi per farlo');
   if (status === 404) return new KBError('not_found', 'Elemento non trovato');
+  if (status === 429) return new KBError('invalid', 'Troppi inviti in sospeso');
+  // Team rules answer 409 too: tell them apart from a stale file by the server's message.
+  if (/at least one owner/i.test(error ?? '')) return new KBError('invalid', 'Serve almeno un proprietario: nomina prima un altro proprietario');
+  if (/already a member/i.test(error ?? '')) return new KBError('exists', 'Questa persona è già nel team');
+  if (/already pending/i.test(error ?? '')) return new KBError('exists', 'Esiste già un invito per questa email');
+  if (/still has files/i.test(error ?? '')) return new KBError('invalid', 'Il team ha ancora dei file: spostali o eliminali prima');
+  if (/team limit/i.test(error ?? '')) return new KBError('invalid', 'Hai raggiunto il numero massimo di team');
+  if (/valid email/i.test(error ?? '')) return new KBError('invalid', 'Inserisci un’email valida');
   if (status === 409) return new KBError('conflict', 'Il file è stato modificato da un agente nel frattempo: ricarica e riprova');
   if (/already exists/i.test(error ?? '')) return new KBError('exists', 'Esiste già un elemento con questo nome');
   if (/index\.md/i.test(error ?? '')) return new KBError('read_only', 'index.md è generato automaticamente');
@@ -985,6 +1015,109 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     this.persist();
     await this.afterWrite();
     this.emit({ type: 'changed', paths: [c.path] });
+  }
+
+  // ─── teams ────────────────────────────────────────────────────────────────
+
+  private toTeam(row: TeamRow): Team {
+    return { id: row.id, name: row.name, role: row.role, createdAt: row.created_at };
+  }
+
+  async listTeams() {
+    const { teams } = await this.request<{ teams: TeamRow[] }>('GET', '/v1/teams');
+    return teams.map((t) => this.toTeam(t));
+  }
+
+  async getTeam(id: string) {
+    const { team } = await this.request<{ team: TeamRow }>('GET', `/v1/teams/${encodeURIComponent(id)}`);
+    return this.toTeam(team);
+  }
+
+  async createTeam(name: string) {
+    const { team } = await this.request<{ team: TeamRow }>('POST', '/v1/teams', { body: { name } });
+    return this.toTeam(team);
+  }
+
+  async renameTeam(id: string, name: string) {
+    await this.request('PATCH', `/v1/teams/${encodeURIComponent(id)}`, { body: { name } });
+  }
+
+  async deleteTeam(id: string) {
+    await this.request('DELETE', `/v1/teams/${encodeURIComponent(id)}`);
+  }
+
+  async listTeamMembers(teamId: string): Promise<TeamMember[]> {
+    const { members } = await this.request<{
+      members: { user_id: string; role: TeamRole; joined_at: string; email: string | null; name: string | null }[];
+    }>('GET', `/v1/teams/${encodeURIComponent(teamId)}/members`);
+    return members.map((m) => ({
+      userId: m.user_id,
+      role: m.role,
+      joinedAt: m.joined_at,
+      name: m.name,
+      email: m.email,
+      isYou: m.user_id === this.userId,
+    }));
+  }
+
+  async setMemberRole(teamId: string, userId: string, role: TeamRole) {
+    await this.request('PATCH', `/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, { body: { role } });
+  }
+
+  async removeMember(teamId: string, userId: string) {
+    await this.request('DELETE', `/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`);
+  }
+
+  private toInvite(i: TeamInviteRow): TeamInvite {
+    return { id: i.id, email: i.email, role: i.role, createdAt: i.created_at, expiresAt: i.expires_at };
+  }
+
+  async listTeamInvites(teamId: string) {
+    const { invites } = await this.request<{ invites: TeamInviteRow[] }>(
+      'GET',
+      `/v1/teams/${encodeURIComponent(teamId)}/invites`,
+    );
+    return invites.map((i) => this.toInvite(i));
+  }
+
+  async inviteToTeam(teamId: string, email: string, role: InviteRole) {
+    const { invite } = await this.request<{ invite: TeamInviteRow }>(
+      'POST',
+      `/v1/teams/${encodeURIComponent(teamId)}/invites`,
+      { body: { email, role } },
+    );
+    return this.toInvite(invite);
+  }
+
+  async revokeInvite(teamId: string, inviteId: string) {
+    await this.request('DELETE', `/v1/teams/${encodeURIComponent(teamId)}/invites/${encodeURIComponent(inviteId)}`);
+  }
+
+  async listMyInvites(): Promise<MyInvite[]> {
+    const { invites } = await this.request<{
+      invites: {
+        id: string;
+        team_id: string;
+        team_name: string;
+        role: TeamRole;
+        invited_by: { name: string | null; email: string | null };
+        created_at: string;
+        expires_at: string;
+      }[];
+    }>('GET', '/v1/invites');
+    return invites.map((i) => ({
+      id: i.id,
+      teamId: i.team_id,
+      teamName: i.team_name,
+      role: i.role,
+      invitedBy: i.invited_by.name ?? i.invited_by.email,
+      createdAt: i.created_at,
+      expiresAt: i.expires_at,
+    }));
+  }
+
+  async answerInvite(inviteId: string, accept: boolean) {
+    await this.request('POST', `/v1/invites/${encodeURIComponent(inviteId)}/${accept ? 'accept' : 'decline'}`);
   }
 
   // ─── settings ─────────────────────────────────────────────────────────────

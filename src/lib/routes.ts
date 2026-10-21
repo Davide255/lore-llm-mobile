@@ -19,6 +19,9 @@ export const routes = {
   change: (id: string) => ({ pathname: '/change/[id]', params: { id } }) as unknown as Href,
   agent: (id: string) => ({ pathname: '/agent/[id]', params: { id } }) as unknown as Href,
   connectAgent: () => '/connect-agent' as Href,
+  team: (id: string) => ({ pathname: '/team/[id]', params: { id } }) as unknown as Href,
+  newTeam: () => '/new-team' as Href,
+  inviteMember: (teamId: string) => ({ pathname: '/invite-member', params: { teamId } }) as unknown as Href,
 };
 
 /** Catch-all params arrive as string[] (native) or a single string (web). */
