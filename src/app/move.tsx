@@ -5,7 +5,7 @@ import { HeaderItems } from '@/components/header-items';
 import { showToast } from '@/components/toast';
 import { Cell, IconWell, Loading, Section } from '@/components/ui';
 import { actions, attempt, useFolderTree } from '@/data/hooks';
-import { basename, dirname, projectOf, splitPath } from '@/lib/paths';
+import { basename, dirname, projectLabel, projectOf, splitPath } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { useTheme } from '@/theme';
 
@@ -40,7 +40,7 @@ export default function MoveScreen() {
                 <Cell
                   key={f}
                   icon={<IconWell name="folderFill" color={t.folder} filled />}
-                  title={depth === 0 ? `${f}/` : `${'  '.repeat(depth - 1)}${basename(f)}/`}
+                  title={depth === 0 ? `${projectLabel(f)}/` : `${'  '.repeat(depth - 1)}${basename(f)}/`}
                   mono
                   subtitle={f === from ? 'Posizione attuale' : depth === 0 ? 'Radice del progetto' : dirname(f)}
                   disabled={f === from}

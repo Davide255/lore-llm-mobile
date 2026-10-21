@@ -43,8 +43,17 @@ export interface ChecklistProgress {
 }
 
 export interface Project {
-  /** Also the project's root path. */
+  /**
+   * Also the project's root path. A team's project is `Name@<teamId>`, so it never
+   * clashes with a personal one; show `title`, not this.
+   */
   name: string;
+  /** What to display: the name without the team suffix. */
+  title: string;
+  /** The team that owns the project (null: it is the user's own). */
+  team: { id: string; name: string } | null;
+  /** What the user may do in it: everything in their own projects, the team role otherwise. */
+  access: TeamRole;
   description: string;
   icon: ProjectIcon;
   fileCount: number;
@@ -56,6 +65,8 @@ export interface FolderEntry {
   kind: 'folder';
   path: string;
   name: string;
+  /** The user's role where this folder lives (see Project.access). */
+  access: TeamRole;
   fileCount: number;
   folderCount: number;
   updatedAt: ISODate;
@@ -65,6 +76,8 @@ export interface FileEntry {
   kind: 'file';
   path: string;
   name: string;
+  /** The user's role where this file lives (see Project.access). */
+  access: TeamRole;
   role: FileRole;
   /** Size in bytes. */
   size: number;
@@ -80,6 +93,8 @@ export interface FolderListing {
   path: string;
   name: string;
   project: string;
+  /** The user's role where this folder lives (see Project.access). */
+  access: TeamRole;
   isProjectRoot: boolean;
   /** Only present on project roots. */
   index: FileEntry | null;
@@ -98,6 +113,8 @@ export interface FileDocument {
   updatedAt: ISODate;
   /** Opaque version used for optimistic concurrency on writes. */
   version: string;
+  /** The user's role where this file lives (see Project.access). */
+  access: TeamRole;
   author: Author;
   /** The agent that wrote the current version (author = 'agent'). */
   agent?: AgentRef;
@@ -211,12 +228,60 @@ export interface Change {
   restorable: boolean;
 }
 
+// ─── Teams ───────────────────────────────────────────────────────────────────
+
+/** What a person may do in a team's files: owners also manage the team, editors write, viewers read. */
+export type TeamRole = 'owner' | 'editor' | 'viewer';
+
+/** Roles an invitation can grant (owners are made by promoting a member). */
+export type InviteRole = Exclude<TeamRole, 'owner'>;
+
+export interface Team {
+  id: string;
+  name: string;
+  /** The signed-in user's role in the team. */
+  role: TeamRole;
+  createdAt: ISODate;
+}
+
+export interface TeamMember {
+  userId: string;
+  role: TeamRole;
+  joinedAt: ISODate;
+  name: string | null;
+  email: string | null;
+  isYou: boolean;
+}
+
+/** An invitation sent by the team, still waiting for an answer. */
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: InviteRole;
+  createdAt: ISODate;
+  expiresAt: ISODate;
+}
+
+/** An invitation addressed to the signed-in user. */
+export interface MyInvite {
+  id: string;
+  teamId: string;
+  teamName: string;
+  role: TeamRole;
+  /** Who sent it: name, else email. */
+  invitedBy: string | null;
+  createdAt: ISODate;
+  expiresAt: ISODate;
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface KBSettings {
   lastSyncAt: ISODate | null;
   /** Host of the Lore server the app talks to. */
   server: string;
+  /** The MCP endpoint: what a connector (Claude, ChatGPT) is pointed at; it signs in through OAuth. */
+  mcpUrl: string;
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────

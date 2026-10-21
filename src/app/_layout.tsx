@@ -75,12 +75,15 @@ export default function RootLayout() {
               <Stack.Screen name="file/[...path]" options={{ title: '' }} />
               <Stack.Screen name="change/[id]" options={{ title: '' }} />
               <Stack.Screen name="agent/[id]" options={{ title: '' }} />
+              <Stack.Screen name="team/[id]" options={{ title: '' }} />
               <Stack.Screen name="edit/[...path]" options={{ presentation: 'modal', title: '' }} />
               <Stack.Screen name="new-file" options={{ presentation: 'modal', title: 'Nuovo file' }} />
               <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
               <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
               <Stack.Screen name="move" options={{ presentation: 'modal', title: 'Sposta in…' }} />
               <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
+              <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
+              <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
             </Stack.Protected>
           </Stack>
           <ActionSheetHost />

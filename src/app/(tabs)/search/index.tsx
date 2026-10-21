@@ -8,6 +8,7 @@ import { Icon } from '@/components/icon';
 import { Cell, EmptyState, IconWell, Pill, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, useProjects, useRecentFiles, useRecentSearches, useSearch } from '@/data/hooks';
 import { plural } from '@/lib/format';
+import { projectLabel, teamOf } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { fonts, useTheme, type Theme } from '@/theme';
 
@@ -43,6 +44,8 @@ export default function SearchScreen() {
   };
 
   const projectNames = (projects.data ?? []).map((p) => p.name);
+  // A team's project may share its name with a personal one: mark it.
+  const pillLabel = (key: string) => `${projectLabel(key)}${teamOf(key) ? ' · team' : ''}`;
   const counts = new Map(results.data?.byProject.map((b) => [b.project, b.matches]));
   const total = results.data?.byProject.reduce((n, b) => n + b.matches, 0) ?? 0;
 
@@ -53,7 +56,7 @@ export default function SearchScreen() {
       </Pill>
       {(withCounts ? [...counts.keys()] : projectNames).map((p) => (
         <Pill key={p} size="md" active={project === p} onPress={() => setProject(project === p ? null : p)}>
-          {withCounts ? `${p} · ${counts.get(p)}` : p}
+          {withCounts ? `${pillLabel(p)} · ${counts.get(p)}` : pillLabel(p)}
         </Pill>
       ))}
     </>
@@ -104,7 +107,7 @@ export default function SearchScreen() {
                   icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : 'doc'} />}
                   title={r.name}
                   mono
-                  subtitle={r.project}
+                  subtitle={projectLabel(r.project)}
                   onPress={() => router.push(routes.file(r.path))}
                 />
               ))}
@@ -157,7 +160,7 @@ function ResultRow({ hit, t, onPress }: { hit: SearchHit; t: Theme; onPress: () 
         <Icon name={hit.role === 'index' ? 'index' : 'doc'} size={16} color={hit.role === 'index' ? t.info : t.textMuted} />
         <Text style={{ fontFamily: fonts.mono, fontSize: 13.5, fontWeight: '500', color: t.text }}>{hit.name}</Text>
         <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, color: t.textMuted }}>
-          · {hit.project}
+          · {projectLabel(hit.project)}
         </Text>
       </View>
       <Text style={{ fontSize: 13, lineHeight: 19.5, color: t.textSecondary }}>{parts}</Text>

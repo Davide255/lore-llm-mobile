@@ -8,7 +8,9 @@ import {
   type CreateFileInput,
   type CreateProjectInput,
   type FileDocument,
+  type InviteRole,
   type Project,
+  type TeamRole,
 } from '@/api';
 import { toggleTaskAtLine } from '@/lib/markdown';
 import { invalidate, setQueryData, useQuery } from './store';
@@ -33,6 +35,12 @@ export const useAgent = (id: string) => useQuery(id ? `agent:${id}` : null, () =
 export const useActivity = () => useQuery('activity', () => kb.listActivity());
 export const useChange = (id: string) => useQuery(`change:${id}`, () => kb.getChange(id));
 export const useSettings = () => useQuery('settings', () => kb.getSettings());
+export const useTeams = () => useQuery('teams', () => kb.listTeams());
+export const useTeam = (id: string) => useQuery(id ? `team:${id}` : null, () => kb.getTeam(id));
+export const useTeamMembers = (id: string) => useQuery(id ? `team-members:${id}` : null, () => kb.listTeamMembers(id));
+/** Pending invitations sent by a team (owners only: others get an error). */
+export const useTeamInvites = (id: string | null) => useQuery(id ? `team-invites:${id}` : null, () => kb.listTeamInvites(id!));
+export const useMyInvites = () => useQuery('my-invites', () => kb.listMyInvites());
 
 // ─── Background changes (agent writes) ──────────────────────────────────────
 
@@ -83,6 +91,16 @@ export const actions = {
   updateAgent: (id: string, patch: AgentPatch) => mutate(() => kb.updateAgent(id, patch)),
   revokeAgent: (id: string) => mutate(() => kb.revokeAgent(id)),
   revertChange: (id: string) => mutate(() => kb.revertChange(id)),
+
+  createTeam: (name: string) => mutate(() => kb.createTeam(name)),
+  renameTeam: (id: string, name: string) => mutate(() => kb.renameTeam(id, name)),
+  deleteTeam: (id: string) => mutate(() => kb.deleteTeam(id)),
+  setMemberRole: (teamId: string, userId: string, role: TeamRole) => mutate(() => kb.setMemberRole(teamId, userId, role)),
+  removeMember: (teamId: string, userId: string) => mutate(() => kb.removeMember(teamId, userId)),
+  inviteToTeam: (teamId: string, email: string, role: InviteRole) => mutate(() => kb.inviteToTeam(teamId, email, role)),
+  revokeInvite: (teamId: string, inviteId: string) => mutate(() => kb.revokeInvite(teamId, inviteId)),
+  answerInvite: (inviteId: string, accept: boolean) => mutate(() => kb.answerInvite(inviteId, accept)),
+  moveProjectToTeam: (project: string, teamId: string) => mutate(() => kb.moveProjectToTeam(project, teamId)),
 
   sync: () => mutate(() => kb.sync()),
 };

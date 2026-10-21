@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { HeaderItems } from '@/components/header-items';
 import { SectionHeader } from '@/components/ui';
 import { actions, attempt } from '@/data/hooks';
-import { basename, isProjectRoot, validateSlug } from '@/lib/paths';
+import { basename, isProjectRoot, projectLabel, validateSlug } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { fonts, useTheme } from '@/theme';
 
@@ -13,14 +13,15 @@ import { fonts, useTheme } from '@/theme';
 export default function RenameScreen() {
   const t = useTheme();
   const { path, reopen } = useLocalSearchParams<{ path: string; reopen?: string }>();
-  const current = basename(path);
-  const isFile = current.endsWith('.md');
   const isProject = isProjectRoot(path);
+  // A team project's key carries its team: only the name before it is edited.
+  const current = isProject ? projectLabel(path) : basename(path);
+  const isFile = current.endsWith('.md');
   const [name, setName] = useState(isFile ? current.slice(0, -3) : current);
   const [busy, setBusy] = useState(false);
 
   // Projects are free-form names; files and folders follow the slug rule.
-  const error = isProject ? (name.trim() && !name.includes('/') ? null : 'Nome non valido.') : validateSlug(name);
+  const error = isProject ? (name.trim() && !name.includes('/') && !name.includes('@') ? null : 'Nome non valido.') : validateSlug(name);
   const next = isFile ? `${name}.md` : name.trim();
   const canSave = !error && next !== current && !busy;
 

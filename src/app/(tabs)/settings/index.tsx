@@ -6,11 +6,14 @@ import { ActivityIndicator, Alert } from 'react-native';
 
 import { authUser, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
+import { PendingInvites } from '@/components/invites';
+import { McpLinkSection } from '@/components/mcp-link';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
-import { actions, attempt, useAgents, useSettings, useSummary } from '@/data/hooks';
+import { actions, attempt, useAgents, useSettings, useSummary, useTeams } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
 import { checkForOtaUpdate, currentOtaLabel, otaEnabled, otaPhase as otaPhaseSignal, type OtaPhase } from '@/lib/ota';
 import { routes } from '@/lib/routes';
+import { ROLE_LABEL } from '@/lib/teams';
 import { useTheme } from '@/theme';
 import { setAppearance, useAppearance, type AppearancePreference } from '@/theme/appearance';
 
@@ -36,6 +39,7 @@ export default function SettingsScreen() {
   const settings = useSettings();
   const summary = useSummary();
   const agents = useAgents();
+  const teams = useTeams();
   const [syncing, setSyncing] = useState(false);
   const appearance = useAppearance();
   const otaPhase = otaPhaseSignal.useValue();
@@ -84,6 +88,27 @@ export default function SettingsScreen() {
           />
         </Section>
 
+        <PendingInvites />
+
+        <Section header="Team" footer="Condividi progetti con altre persone: ognuna ha il suo ruolo (proprietario, editor, sola lettura).">
+          {(teams.data ?? []).map((team) => (
+            <Cell
+              key={team.id}
+              icon={<IconWell name="team" />}
+              title={team.name}
+              subtitle={ROLE_LABEL[team.role]}
+              chevron
+              onPress={() => router.push(routes.team(team.id))}
+            />
+          ))}
+          <Cell
+            icon={<IconWell name="add" background="transparent" />}
+            title="Crea un team"
+            titleColor={t.accentText}
+            onPress={() => router.push(routes.newTeam())}
+          />
+        </Section>
+
         <Section header="Agenti" footer="Ogni agente ha il suo token: il server applica permessi e progetti a ogni chiamata. Revocarlo lo blocca subito.">
           {(agents.data ?? []).map((a) => (
             <Cell
@@ -118,6 +143,8 @@ export default function SettingsScreen() {
             onPress={otaEnabled && otaPhase !== 'checking' && otaPhase !== 'downloading' ? () => void checkForOtaUpdate({ force: true }) : undefined}
           />
         </Section>
+
+        <McpLinkSection />
 
         <SectionHeader>Aspetto</SectionHeader>
         <SegmentedControl

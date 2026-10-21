@@ -44,7 +44,7 @@
     "ios": "expo run:ios",
     "build": "expo export --platform web",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "test": "node --experimental-transform-types --test 'src/**/*.test.ts'",
     "web": "expo start --web",
     "lint": "expo lint",
     "ota:publish": "node scripts/publish-ota.mjs"

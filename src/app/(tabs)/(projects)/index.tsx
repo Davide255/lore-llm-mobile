@@ -5,10 +5,12 @@ import { RefreshControl, Text, View } from 'react-native';
 import type { Project } from '@/api';
 import { EntryRow } from '@/components/entry-row';
 import { HeaderItems } from '@/components/header-items';
+import { PendingInvites } from '@/components/invites';
 import { projectIcons } from '@/components/icon';
-import { Cell, EmptyState, ErrorState, IconWell, Loading, ProgressBar, Screen, Section } from '@/components/ui';
-import { useProjects, useRecentFiles, useSummary } from '@/data/hooks';
+import { Cell, EmptyState, ErrorState, IconWell, Loading, Pill, ProgressBar, Screen, Section } from '@/components/ui';
+import { useMyInvites, useProjects, useRecentFiles, useSummary } from '@/data/hooks';
 import { plural, relativeTime } from '@/lib/format';
+import { projectLabel } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { useTheme, type Theme } from '@/theme';
 
@@ -25,9 +27,10 @@ export default function ProjectsScreen() {
   const projects = useProjects();
   const summary = useSummary();
   const recent = useRecentFiles(3);
+  const invites = useMyInvites();
   const [filter, setFilter] = useState('');
 
-  const visible = (projects.data ?? []).filter((p) => p.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const visible = (projects.data ?? []).filter((p) => p.title.toLowerCase().includes(filter.trim().toLowerCase()));
 
   return (
     <>
@@ -41,8 +44,9 @@ export default function ProjectsScreen() {
       ) : (
         <Screen
           refreshControl={
-            <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh()])} />
+            <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh(), invites.refresh()])} />
           }>
+          {!filter && <PendingInvites />}
           {visible.length === 0 ? (
             <EmptyState
               icon="folder"
@@ -59,9 +63,10 @@ export default function ProjectsScreen() {
               {visible.map((p) => (
                 <EntryRow
                   key={p.name}
-                  entry={{ kind: 'folder', path: p.name, name: p.name, fileCount: p.fileCount, folderCount: 0, updatedAt: p.updatedAt }}
+                  entry={{ kind: 'folder', path: p.name, name: p.title, access: p.access, fileCount: p.fileCount, folderCount: 0, updatedAt: p.updatedAt }}
                   icon={<IconWell name={projectIcons[p.icon]} {...wellColors(p, t)} />}
-                  subtitle={`${p.fileCount} file · ${relativeTime(p.updatedAt)}`}>
+                  subtitle={`${p.fileCount} file · ${relativeTime(p.updatedAt)}`}
+                  right={p.team ? <Pill>{p.team.name}</Pill> : undefined}>
                   {p.checklist && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
                       <ProgressBar value={p.checklist.done / p.checklist.total} style={{ flex: 1 }} />
@@ -83,7 +88,7 @@ export default function ProjectsScreen() {
                   icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : 'doc'} />}
                   title={r.name}
                   mono
-                  subtitle={r.project}
+                  subtitle={projectLabel(r.project)}
                   chevron
                   onPress={() => router.push(routes.file(r.path))}
                 />
