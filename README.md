@@ -4,7 +4,7 @@ A mobile app for editing a **knowledge base shared between you and your AI agent
 
 Built with Expo (SDK 57) and Expo Router, using native system components wherever possible — on iOS 26 the tab bar, header buttons, bottom toolbar and menus render with Liquid Glass.
 
-The knowledge base lives on the [lore-llm](../lore-llm) server (Cloudflare Worker + R2), shared with Lore LLM Desktop. You sign in with Apple or Google (through AWS Cognito) before anything else is shown.
+The knowledge base lives on the [lore-llm](https://github.com/Davide255/lore-llm) server (Cloudflare Worker + R2), shared with [Lore LLM Desktop](https://github.com/Davide255/lore-llm-desktop). You sign in with Apple or Google (through AWS Cognito) before anything else is shown.
 
 ## The knowledge base
 
