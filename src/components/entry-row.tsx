@@ -11,6 +11,7 @@ import { Cell, IconWell } from './ui';
 import type { Entry } from '@/api';
 import { fileSize, plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
+import { canWrite } from '@/lib/teams';
 import { useTheme } from '@/theme';
 
 function SwipeAction({ icon, label, color, onPress }: { icon: IconName; label: string; color: string; onPress: () => void }) {
@@ -97,7 +98,7 @@ export function EntryRow({
       cell
     );
 
-  if (special) return <View style={{ backgroundColor: t.cell }}>{row}</View>;
+  if (special || !canWrite(entry.access)) return <View style={{ backgroundColor: t.cell }}>{row}</View>;
 
   return (
     <ReanimatedSwipeable

@@ -8,6 +8,7 @@ import { AGENT_KIND_LIST, type AgentKind, type AgentPermission, type NewAgent } 
 import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { AGENT_KINDS, AgentAvatar } from '@/components/identity';
+import { McpLinkSection } from '@/components/mcp-link';
 import { Banner, Cell, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt } from '@/data/hooks';
 import { fonts, useTheme } from '@/theme';
@@ -48,7 +49,9 @@ export default function ConnectAgentScreen() {
         contentContainerStyle={{ padding: 16, paddingTop: 12 }}
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic">
-        <SectionHeader style={{ marginTop: 0 }}>Tipo di agente</SectionHeader>
+        <McpLinkSection />
+
+        <SectionHeader>Oppure con un token · tipo di agente</SectionHeader>
         <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: 10 }}>
           {AGENT_KIND_LIST.map((k) => {
             const on = k === kind;

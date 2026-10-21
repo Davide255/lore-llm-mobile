@@ -79,7 +79,8 @@ export default function AgentScreen() {
 
           <Section header="Progetti" footer="Il server applica permessi e progetti a ogni chiamata dell’agente." inset={13}>
             <Cell title="Tutti i progetti" right={check(a.scope.includes('*'))} onPress={() => update({ scope: ['*'] })} />
-            {(projects.data ?? []).map((p) => (
+            {/* Agents work in the user's own projects; team projects are not in their scope list. */}
+            {(projects.data ?? []).filter((p) => !p.team).map((p) => (
               <Cell
                 key={p.name}
                 title={p.name}

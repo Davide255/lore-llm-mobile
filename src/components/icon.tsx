@@ -57,6 +57,8 @@ export const icons = {
   redo: { sf: 'arrow.uturn.forward', md: 'redo' },
   keyboardHide: { sf: 'keyboard.chevron.compact.down', md: 'keyboard_hide' },
   agent: { sf: 'person.crop.circle.badge.plus', md: 'person_add' },
+  team: { sf: 'person.2', md: 'group' },
+  mail: { sf: 'envelope', md: 'mail' },
   restore: { sf: 'arrow.counterclockwise', md: 'restore' },
   logout: { sf: 'rectangle.portrait.and.arrow.right', md: 'logout' },
   apple: { sf: 'apple.logo', md: 'login' },
