@@ -92,6 +92,14 @@ export interface KnowledgeBaseClient {
   listMyInvites(): Promise<MyInvite[]>;
   answerInvite(inviteId: string, accept: boolean): Promise<void>;
 
+  // Account
+  /**
+   * Permanently deletes the signed-in account: files, agents, team memberships and
+   * the sign-in identity, on the server and on this device. Refused while the user is
+   * the only owner of a team. Safe to retry. The caller signs out afterwards.
+   */
+  deleteAccount(): Promise<void>;
+
   // Settings
   getSettings(): Promise<KBSettings>;
   sync(): Promise<KBSettings>;

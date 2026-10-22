@@ -170,6 +170,9 @@ function toError(status: number, error: string | undefined): KBError {
   if (status === 404) return new KBError('not_found', 'Elemento non trovato');
   if (status === 429) return new KBError('invalid', 'Troppi inviti in sospeso');
   // Team rules answer 409 too: tell them apart from a stale file by the server's message.
+  if (/only owner of a team/i.test(error ?? '')) {
+    return new KBError('invalid', 'Sei l’unico proprietario di un team: nomina un altro proprietario o elimina il team, poi riprova');
+  }
   if (/at least one owner/i.test(error ?? '')) return new KBError('invalid', 'Serve almeno un proprietario: nomina prima un altro proprietario');
   if (/already a member/i.test(error ?? '')) return new KBError('exists', 'Questa persona è già nel team');
   if (/already pending/i.test(error ?? '')) return new KBError('exists', 'Esiste già un invito per questa email');
@@ -1254,6 +1257,15 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     await this.ready();
     await this.reconcile(true);
     return this.getSettings();
+  }
+
+  async deleteAccount() {
+    const key = this.userId ? this.storageKey() : null;
+    await this.request('DELETE', '/v1/account');
+    // The server no longer has this user: drop what is cached on the device too.
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (key) await AsyncStorage.removeItem(key).catch(() => {});
   }
 }
 

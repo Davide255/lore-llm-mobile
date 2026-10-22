@@ -20,6 +20,7 @@ export function createFakeWorker() {
   const teams = new Map<string, { name: string; role: TeamRole }>();
   const log: string[] = [];
   let clock = 0;
+  let accountBlocked = false;
 
   const space = (owner: string) => {
     if (!spaces.has(owner)) spaces.set(owner, new Map());
@@ -61,6 +62,13 @@ export function createFakeWorker() {
     if (route === 'GET /v1/version') {
       const scopes = Object.fromEntries([...teams.keys()].map((id) => [`t:${id}`, { version: versions.get(`t:${id}`) ?? 0, updated_at: null }]));
       return ok({ version: versions.get('') ?? 0, updated_at: null, scopes });
+    }
+    if (route === 'DELETE /v1/account') {
+      if (accountBlocked) return ok({ error: 'You are the only owner of a team: make someone else owner or delete the team first' }, 409);
+      spaces.clear();
+      spaces.set('', new Map());
+      teams.clear();
+      return ok({ ok: true, identity_deleted: true });
     }
     if (route === 'GET /v1/audit') return ok({ items: [], next_before: null });
     if (route === 'GET /v1/agents') return ok({ agents: [] });
@@ -142,6 +150,8 @@ export function createFakeWorker() {
     setRole: (id: string, role: TeamRole) => teams.set(id, { ...teams.get(id)!, role }),
     /** The user leaves (or is removed from) a team. */
     removeTeam: (id: string) => teams.delete(id),
+    /** The user is the only owner of a team: the server refuses to delete the account. */
+    blockAccountDeletion: (blocked: boolean) => (accountBlocked = blocked),
     log,
     /** Requests since the last call. */
     take: () => log.splice(0),

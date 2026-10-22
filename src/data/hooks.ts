@@ -103,6 +103,8 @@ export const actions = {
   moveProjectToTeam: (project: string, teamId: string) => mutate(() => kb.moveProjectToTeam(project, teamId)),
 
   sync: () => mutate(() => kb.sync()),
+
+  deleteAccount: () => mutate(() => kb.deleteAccount()),
 };
 
 /** Runs an action and surfaces failures with a system alert. */

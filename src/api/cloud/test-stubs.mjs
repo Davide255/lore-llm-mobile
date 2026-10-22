@@ -7,7 +7,7 @@ const SRC = fileURLToPath(new URL('../../', import.meta.url));
 const stubs = {
   'react-native': 'export const AppState = { currentState: "active", addEventListener() {} };',
   '@react-native-async-storage/async-storage':
-    'export default { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} };',
+    'export default { getItem: async () => null, setItem: async () => {}, removeItem: async (k) => { (globalThis.removedKeys ??= []).push(k); } };',
   '@/auth/session': 'export const idToken = async () => "token";',
 };
 
