@@ -41,6 +41,7 @@ export default function SettingsScreen() {
   const agents = useAgents();
   const teams = useTeams();
   const [syncing, setSyncing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const appearance = useAppearance();
   const otaPhase = otaPhaseSignal.useValue();
   const s = settings.data;
@@ -57,6 +58,35 @@ export default function SettingsScreen() {
       { text: 'Esci', style: 'destructive', onPress: () => signOut() },
     ]);
 
+  const deleteAccount = async () => {
+    setDeleting(true);
+    const done = await attempt(
+      () => actions.deleteAccount().then(() => true),
+      'Account non eliminato',
+    );
+    setDeleting(false);
+    if (done) await signOut();
+  };
+
+  // Two steps, the second one naming what goes away: there is no way back.
+  const confirmDeleteAccount = () =>
+    Alert.alert(
+      'Eliminare l’account?',
+      'Verranno cancellati per sempre i tuoi progetti e file, gli agenti collegati, le tue iscrizioni ai team e l’accesso con Google o Apple. Non si può annullare.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Continua',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Ultima conferma', 'Eliminare definitivamente l’account e tutti i suoi dati?', [
+              { text: 'Annulla', style: 'cancel' },
+              { text: 'Elimina account', style: 'destructive', onPress: deleteAccount },
+            ]),
+        },
+      ],
+    );
+
   return (
     <>
       <Stack.Screen options={{ title: 'Impostazioni' }} />
@@ -70,6 +100,15 @@ export default function SettingsScreen() {
               subtitle={user.email ? `${user.email} · ${providerLabels[user.provider]}` : `Account ${providerLabels[user.provider]}`}
             />
             <Cell icon={<IconWell name="logout" />} title="Esci" titleColor={t.error} onPress={confirmSignOut} />
+            <Cell
+              icon={<IconWell name="delete" />}
+              title="Elimina account"
+              subtitle="Cancella per sempre account, file e agenti"
+              titleColor={t.error}
+              right={deleting ? <ActivityIndicator color={t.textMuted} /> : undefined}
+              disabled={deleting}
+              onPress={confirmDeleteAccount}
+            />
           </Section>
         )}
 
