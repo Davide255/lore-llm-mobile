@@ -101,7 +101,7 @@ export const signManifest = (manifestBody, privateKeyPem, keyid = "main") => {
   const sig = createSign("RSA-SHA256")
     .update(manifestBody)
     .sign(privateKeyPem, "base64");
-  return `sig=:${sig}:, keyid="${keyid}"`;
+  return `sig="${sig}", keyid="${keyid}"`;
 };
 
 // Per-manifest header, written next to manifest.json (ota-server/.htaccess has the rest).

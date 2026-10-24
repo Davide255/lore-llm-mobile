@@ -85,7 +85,7 @@ test("signManifest produces a signature the public key verifies", () => {
     body,
     privateKey.export({ type: "pkcs8", format: "pem" }),
   );
-  const match = /^sig=:([A-Za-z0-9+/=]+):, keyid="main"$/.exec(header);
+  const match = /^sig="([A-Za-z0-9+/=]+)", keyid="main"$/.exec(header);
   assert.ok(match, header);
   const ok = createVerify("RSA-SHA256").update(body).verify(publicKey, match[1], "base64");
   assert.equal(ok, true);
@@ -97,9 +97,9 @@ test("signManifest produces a signature the public key verifies", () => {
 });
 
 test("signatureHtaccess embeds the header for manifest.json only", () => {
-  const out = signatureHtaccess('sig=:abc:, keyid="main"');
+  const out = signatureHtaccess('sig="abc", keyid="main"');
   assert.match(out, /FilesMatch "\^manifest\\\.json\$"/);
-  assert.match(out, /Header set expo-signature 'sig=:abc:, keyid="main"'/);
+  assert.match(out, /Header set expo-signature 'sig="abc", keyid="main"'/);
 });
 
 test("defaultVersion is valid semver", () => {
