@@ -5,7 +5,9 @@ import { splitPath } from './paths';
 /** Central place for building hrefs to KB entries (catch-all routes). */
 export const routes = {
   folder: (path: string) => ({ pathname: '/folder/[...path]', params: { path: splitPath(path) } }) as unknown as Href,
-  file: (path: string) => ({ pathname: '/file/[...path]', params: { path: splitPath(path) } }) as unknown as Href,
+  /** `heading`: scroll to the heading with this text once the file is shown. */
+  file: (path: string, heading?: string | null) =>
+    ({ pathname: '/file/[...path]', params: { path: splitPath(path), ...(heading ? { heading } : {}) } }) as unknown as Href,
   edit: (path: string) => ({ pathname: '/edit/[...path]', params: { path: splitPath(path) } }) as unknown as Href,
   entry: (path: string, kind: 'file' | 'folder') => (kind === 'file' ? routes.file(path) : routes.folder(path)),
   newFile: (parent: string, kind: 'file' | 'folder' | 'paste' = 'file') =>

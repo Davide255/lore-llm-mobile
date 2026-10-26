@@ -36,6 +36,8 @@ export interface KnowledgeBaseClient {
   listFolder(path: string): Promise<FolderListing>;
   /** Every folder of a project (for "Move to…" and location pickers). */
   listFolderTree(project: string): Promise<string[]>;
+  /** Paths of every file of a project (to resolve [[wiki links]]). */
+  listFiles(project: string): Promise<string[]>;
   getFile(path: string): Promise<FileDocument>;
   listRecentFiles(limit?: number): Promise<RecentFile[]>;
   markOpened(path: string): Promise<void>;

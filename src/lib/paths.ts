@@ -49,6 +49,35 @@ export function resolveLink(fromFile: string, target: string): string | null {
   return base.join('/');
 }
 
+/**
+ * The file a `[[wiki link]]` target points to among the project's `files`: a name
+ * (`notes`) or a path (`plans/notes`), with or without `.md`, in any case, or as the
+ * slug the server would give it. Like Obsidian, a bare name matches in any folder;
+ * ties go to the file closest to `fromFile`, then the shortest path.
+ */
+export function resolveWikiTarget(fromFile: string, target: string, files: string[]): string | null {
+  const names = new Set<string>();
+  for (const raw of [target, target.split('/').map(slugify).join('/')]) {
+    const n = splitPath(raw).join('/').toLowerCase();
+    if (n) names.add(n);
+  }
+  const project = projectOf(fromFile);
+  const from = splitPath(dirname(fromFile));
+  const closeness = (p: string) => {
+    const dir = splitPath(dirname(p));
+    let i = 0;
+    while (i < dir.length && i < from.length && dir[i] === from[i]) i++;
+    return i;
+  };
+  const matches = files.filter((p) => {
+    if (projectOf(p) !== project) return false;
+    const key = p.toLowerCase();
+    return [...names].some((n) => [n, `${n}.md`].some((c) => key === `${project.toLowerCase()}/${c}` || key.endsWith(`/${c}`)));
+  });
+  matches.sort((a, b) => closeness(b) - closeness(a) || splitPath(a).length - splitPath(b).length || a.localeCompare(b));
+  return matches[0] ?? null;
+}
+
 const FILE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 /** File/folder names: lowercase and dashes, no spaces (per design C2). */

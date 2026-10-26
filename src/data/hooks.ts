@@ -23,6 +23,8 @@ export const useProject = (name: string) => useQuery(`project:${name}`, () => kb
 export const useFolder = (path: string) => useQuery(`folder:${path}`, () => kb.listFolder(path));
 export const useFolderTree = (project: string | null) =>
   useQuery(project ? `tree:${project}` : null, () => kb.listFolderTree(project!));
+export const useProjectFiles = (project: string | null) =>
+  useQuery(project ? `files:${project}` : null, () => kb.listFiles(project!));
 export const useFile = (path: string) => useQuery(`file:${path}`, () => kb.getFile(path));
 export const useRecentFiles = (limit = 5) => useQuery(`recent-files:${limit}`, () => kb.listRecentFiles(limit));
 export const useRecentSearches = () => useQuery('recent-searches', () => kb.listRecentSearches());

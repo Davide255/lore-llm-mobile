@@ -731,6 +731,11 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return [...this.allFolders()].filter((f) => projectOf(f) === project).sort();
   }
 
+  async listFiles(project: string) {
+    await this.loadProjects(project);
+    return [...this.files.keys()].filter((p) => projectOf(p) === project).sort();
+  }
+
   async getFile(path: string): Promise<FileDocument> {
     await this.ready();
     const f = await this.fileRequest<FileVersion & { content: string }>('GET', '/v1/file', path);

@@ -1,13 +1,16 @@
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { createContext, Fragment, type ComponentProps, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle } from 'react-native';
+
+import { useProjectFiles } from '@/data/hooks';
 
 import { Icon } from './icon';
 import { InlineMath, lineHeightWithMath, MathBlock } from './math';
-import { parse, parseInline, parseTable, type Block, type Inline } from '@/lib/markdown';
-import { resolveLink } from '@/lib/paths';
+import { findHeading, parse, parseInline, parseTable, type Block, type Inline } from '@/lib/markdown';
+import { projectOf, resolveLink, resolveWikiTarget } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { showToast } from './toast';
 import { fonts, useTheme, type Theme } from '@/theme';
 
 function openLink(fromFile: string, href: string) {
@@ -17,6 +20,26 @@ function openLink(fromFile: string, href: string) {
     return;
   }
   router.push(target.endsWith('.md') ? routes.file(target) : routes.folder(target));
+}
+
+/** Paths of the project's files, for resolving `[[wiki links]]`; null until loaded. */
+const ProjectFiles = createContext<string[] | null>(null);
+
+function wikiTarget(fromFile: string, files: string[] | null, target: string): string | null {
+  return target ? (files ? resolveWikiTarget(fromFile, target, files) : null) : fromFile;
+}
+
+function openWikiLink(fromFile: string, files: string[] | null, target: string, heading: string | null) {
+  const path = wikiTarget(fromFile, files, target);
+  if (path === null) {
+    showToast({ icon: 'link', subject: target, message: files ? 'non trovato' : 'caricamento dei file in corso' });
+    return;
+  }
+  if (path === fromFile) {
+    if (heading) router.setParams({ heading });
+    return;
+  }
+  router.push(path.endsWith('.md') ? routes.file(path, heading) : routes.folder(path.split('/').slice(0, -1).join('/')));
 }
 
 export function InlineText({
@@ -35,6 +58,7 @@ export function InlineText({
   lineHeight: number;
   color: ColorValue;
 }) {
+  const files = useContext(ProjectFiles);
   const render = (nodes: Inline[]): ReactNode =>
     nodes.map((n, i) => {
       switch (n.type) {
@@ -72,6 +96,17 @@ export function InlineText({
               {render(n.children)}
             </Text>
           );
+        case 'wiki': {
+          const found = wikiTarget(path, files, n.target) !== null;
+          return (
+            <Text
+              key={i}
+              style={{ color: found || !files ? t.accentText : t.textMuted }}
+              onPress={() => openWikiLink(path, files, n.target, n.heading)}>
+              {n.label}
+            </Text>
+          );
+        }
       }
     });
   return <>{render(parseInline(source))}</>;
@@ -81,25 +116,84 @@ export function MarkdownView({
   content,
   path,
   onToggleTask,
+  anchor,
+  onAnchor,
 }: {
   content: string;
   /** File path, for resolving relative links. */
   path: string;
+  /** Text of a heading to scroll to. */
+  anchor?: string | null;
+  /** Called with the heading's offset in the parent's content (a scroll view). */
+  onAnchor?: (y: number) => void;
   /** When set, task checkboxes are interactive and report their source line. */
   onToggleTask?: (line: number) => void;
 }) {
   const t = useTheme();
   const blocks = useMemo(() => parse(content), [content]);
+  const files = useProjectFiles(projectOf(path)).data ?? null;
+  const target = anchor ? findHeading(blocks, anchor) : -1;
   return (
-    <View>
-      {blocks.map((b, i) => (
-        <BlockView key={`${b.line}-${i}`} block={b} prev={blocks[i - 1]} path={path} t={t} onToggleTask={onToggleTask} />
-      ))}
+    <ProjectFiles.Provider value={files}>
+      <AnchorScroll active={target >= 0} anchor={anchor} onAnchor={onAnchor}>
+        {blocks.map((b, i) => (
+          <BlockView key={`${b.line}-${i}`} block={b} prev={blocks[i - 1]} path={path} t={t} onToggleTask={onToggleTask} anchored={i === target} />
+        ))}
+      </AnchorScroll>
+    </ProjectFiles.Provider>
+  );
+}
+
+/** The blocks of a document; reports the offset of the anchored one (see `BlockView`). */
+const AnchorContext = createContext<(y: number) => void>(() => {});
+
+function AnchorScroll({
+  children,
+  active,
+  anchor,
+  onAnchor,
+}: {
+  children: ReactNode;
+  active: boolean;
+  anchor?: string | null;
+  onAnchor?: (y: number) => void;
+}) {
+  const top = useRef(0);
+  const offset = useRef<number | null>(null);
+  const done = useRef<string | null>(null);
+  const flush = () => {
+    if (!active || offset.current === null || done.current === anchor) return;
+    done.current = anchor ?? null;
+    onAnchor?.(top.current + offset.current);
+  };
+  useEffect(() => {
+    done.current = null;
+    offset.current = null;
+  }, [anchor]);
+  return (
+    <View
+      onLayout={(e) => {
+        top.current = e.nativeEvent.layout.y;
+        flush();
+      }}>
+      <AnchorContext.Provider
+        value={(y) => {
+          offset.current = y;
+          flush();
+        }}>
+        {children}
+      </AnchorContext.Provider>
     </View>
   );
 }
 
-function BlockView({
+function BlockView({ anchored, ...props }: ComponentProps<typeof BlockContent> & { anchored?: boolean }) {
+  const report = useContext(AnchorContext);
+  const content = <BlockContent {...props} />;
+  return anchored ? <View onLayout={(e) => report(e.nativeEvent.layout.y)}>{content}</View> : content;
+}
+
+function BlockContent({
   block: b,
   prev,
   path,

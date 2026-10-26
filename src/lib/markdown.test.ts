@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parse, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
+import { findHeading, parse, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
 import { texToSvg } from './math.ts';
 
 const mathOf = (src: string) => parseInline(src).filter((n) => n.type === 'math');
@@ -68,4 +68,25 @@ test('TeX converts to SVG sized in em; bad TeX gives null', () => {
   assert.doesNotMatch(m.svg.slice(0, m.svg.indexOf('>')), /width=|height=|style=/);
   assert.ok(m.width > 1 && m.ascent > 0.5 && m.depth > 0.3);
   assert.equal(texToSvg('\\frac{1}{', false), null);
+});
+
+test('wiki links: file, heading, alias and same-file anchors', () => {
+  assert.deepEqual(parseInline('See [[notes#Setup|the setup]] now'), [
+    { type: 'text', text: 'See ' },
+    { type: 'wiki', target: 'notes', heading: 'Setup', label: 'the setup' },
+    { type: 'text', text: ' now' },
+  ]);
+  assert.deepEqual(parseInline('[[plans/a]]'), [{ type: 'wiki', target: 'plans/a', heading: null, label: 'plans/a' }]);
+  assert.deepEqual(parseInline('[[#Intro]]'), [{ type: 'wiki', target: '', heading: 'Intro', label: 'Intro' }]);
+  assert.deepEqual(parseInline('[[a#b#c]]'), [{ type: 'wiki', target: 'a', heading: 'c', label: 'a > c' }]);
+  // Empty links stay text; code spans and markdown links are untouched.
+  assert.equal(plainText('[[]] and [x](y.md)'), '[[]] and x');
+  assert.deepEqual(parseInline('`[[a]]`'), [{ type: 'code', text: '[[a]]' }]);
+  assert.equal(plainText('[[my_note_x]]'), 'my_note_x');
+});
+
+test('findHeading matches heading text case-insensitively', () => {
+  const blocks = parse('# Title\n\ntext\n\n## **Set**up\n');
+  assert.equal(findHeading(blocks, 'setup'), 2);
+  assert.equal(findHeading(blocks, 'missing'), -1);
 });
