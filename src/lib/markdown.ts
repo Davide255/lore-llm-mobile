@@ -277,7 +277,9 @@ export type Inline =
   | { type: 'math'; text: string; display: boolean }
   | { type: 'link'; href: string; children: Inline[] }
   /** Obsidian-style `[[target#heading|label]]`; `target` is empty for a link within the same file. */
-  | { type: 'wiki'; target: string; heading: string | null; label: string };
+  | { type: 'wiki'; target: string; heading: string | null; label: string }
+  /** Obsidian `![[image.png|300]]`: the file is shown in place; `width` comes from a numeric alias. */
+  | { type: 'embed'; target: string; heading: string | null; width: number | null; label: string };
 
 const INLINE = new RegExp(
   [
@@ -291,8 +293,9 @@ const INLINE = new RegExp(
     /(\*\*[^*]+?\*\*|__[^_]+?__)/, // 6 bold
     /(~~[^~]+?~~)/, // 7 strike
     /(\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)/, // 8 italic
-    /(\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 9 [[wiki link]]
-    /(\[[^\]]+\]\([^)\s]+\))/, // 10 link
+    /(!\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 9 ![[embed]]
+    /(\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 10 [[wiki link]]
+    /(\[[^\]]+\]\([^)\s]+\))/, // 11 link
   ]
     .map((r) => r.source)
     .join('|'),
@@ -331,10 +334,17 @@ export function parseInline(src: string): Inline[] {
     else if (m[7]) out.push({ type: 'strike', children: parseInline(tok.slice(2, -2)) });
     else if (m[8]) out.push({ type: 'italic', children: parseInline(tok.slice(1, -1)) });
     else if (m[9]) {
+      const w = parseWikiLink(tok.slice(3, -2));
+      if (!w) out.push({ type: 'text', text: tok });
+      else {
+        const size = /^\d+$/.test(w.label) ? Number(w.label) : null;
+        out.push({ type: 'embed', target: w.target, heading: w.heading, width: size, label: size === null ? w.label : w.target });
+      }
+    } else if (m[10]) {
       const w = parseWikiLink(tok.slice(2, -2));
       if (w) out.push(w);
       else out.push({ type: 'text', text: tok });
-    } else if (m[10]) {
+    } else if (m[11]) {
       const lm = tok.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/)!;
       out.push({ type: 'link', href: lm[2], children: parseInline(lm[1]) });
     }
@@ -343,9 +353,38 @@ export function parseInline(src: string): Inline[] {
   return out;
 }
 
+export type Piece = { type: 'text'; text: string } | { type: 'math'; text: string };
+
+/** A paragraph cut at its `$$…$$` formulas, which are shown as blocks of their own. */
+export function splitDisplayMath(src: string): Piece[] {
+  const out: Piece[] = [];
+  let buf = '';
+  const flush = () => {
+    if (buf.trim()) out.push({ type: 'text', text: buf.trim() });
+    buf = '';
+  };
+  let rest = src;
+  while (rest) {
+    const m = rest.match(INLINE);
+    if (!m || m.index === undefined) {
+      buf += rest;
+      break;
+    }
+    const tok = m[0];
+    if (m[3]) {
+      buf += rest.slice(0, m.index);
+      flush();
+      out.push({ type: 'math', text: tok.slice(2, -2).trim() });
+    } else buf += rest.slice(0, m.index + tok.length);
+    rest = rest.slice(m.index + tok.length);
+  }
+  flush();
+  return out;
+}
+
 export function plainText(src: string): string {
   const walk = (nodes: Inline[]): string =>
-    nodes.map((n) => ('children' in n ? walk(n.children) : n.type === 'wiki' ? n.label : n.text)).join('');
+    nodes.map((n) => ('children' in n ? walk(n.children) : n.type === 'wiki' || n.type === 'embed' ? n.label : n.text)).join('');
   return walk(parseInline(src));
 }
 

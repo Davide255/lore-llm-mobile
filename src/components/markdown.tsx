@@ -7,9 +7,11 @@ import { useProjectFiles } from '@/data/hooks';
 
 import { Icon } from './icon';
 import { InlineMath, lineHeightWithMath, MathBlock } from './math';
-import { findHeading, parse, parseInline, parseTable, type Block, type Inline } from '@/lib/markdown';
+import { attachmentKind } from '@/lib/attachments';
+import { findHeading, parse, parseInline, parseTable, splitDisplayMath, type Block, type Inline } from '@/lib/markdown';
 import { projectOf, resolveLink, resolveWikiTarget } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { AttachmentImage, PdfCard } from './attachment';
 import { showToast } from './toast';
 import { fonts, useTheme, type Theme } from '@/theme';
 
@@ -17,6 +19,10 @@ function openLink(fromFile: string, href: string) {
   const target = resolveLink(fromFile, href);
   if (target === null) {
     if (/^https?:/i.test(href)) WebBrowser.openBrowserAsync(href);
+    return;
+  }
+  if (attachmentKind(target)) {
+    router.push(routes.attachment(target));
     return;
   }
   router.push(target.endsWith('.md') ? routes.file(target) : routes.folder(target));
@@ -37,6 +43,10 @@ function openWikiLink(fromFile: string, files: string[] | null, target: string, 
   }
   if (path === fromFile) {
     if (heading) router.setParams({ heading });
+    return;
+  }
+  if (attachmentKind(path)) {
+    router.push(routes.attachment(path));
     return;
   }
   router.push(path.endsWith('.md') ? routes.file(path, heading) : routes.folder(path.split('/').slice(0, -1).join('/')));
@@ -94,6 +104,13 @@ export function InlineText({
           return (
             <Text key={i} style={{ color: t.accentText }} onPress={() => openLink(path, n.href)}>
               {render(n.children)}
+            </Text>
+          );
+        case 'embed':
+          // Only a paragraph of nothing but embeds shows them in place (see `EmbedBlock`).
+          return (
+            <Text key={i} style={{ color: t.accentText }} onPress={() => openWikiLink(path, files, n.target, n.heading)}>
+              {n.label}
             </Text>
           );
         case 'wiki': {
@@ -220,8 +237,34 @@ function BlockContent({
       const style = b.level === 1 ? styles.h1 : b.level === 2 ? styles.h2 : styles.h3;
       return prose(b.text, style.fontSize, style.lineHeight, t.text, [style, !prev && { marginTop: 0 }]);
     }
-    case 'paragraph':
-      return prose(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
+    case 'paragraph': {
+      const embeds = embedsOnly(b.text);
+      if (embeds) return <EmbedBlock embeds={embeds} path={path} t={t} />;
+      const pieces = splitDisplayMath(b.text);
+      if (!pieces.some((p) => p.type === 'math')) return prose(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
+      // Formulas written as `$$…$$` in a paragraph stand on their own, centered between the text around them.
+      return (
+        <View>
+          {pieces.map((p, i) =>
+            p.type === 'text' ? (
+              <Fragment key={i}>{prose(p.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p)}</Fragment>
+            ) : (
+              <MathBlock
+                key={i}
+                tex={p.text}
+                fontSize={styles.p.fontSize}
+                color={t.text}
+                fallback={
+                  <View style={[styles.code, { backgroundColor: t.cell }]}>
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, lineHeight: 19.5, color: t.textSecondary }}>{p.text}</Text>
+                  </View>
+                }
+              />
+            ),
+          )}
+        </View>
+      );
+    }
     case 'bullet':
     case 'ordered':
       return (
@@ -271,6 +314,38 @@ function BlockContent({
     case 'rule':
       return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
   }
+}
+
+type Embed = Extract<Inline, { type: 'embed' }>;
+
+/** The embeds of a paragraph made of nothing else, or null. */
+function embedsOnly(source: string): Embed[] | null {
+  if (!source.includes('![[')) return null;
+  const nodes = parseInline(source).filter((n) => !(n.type === 'text' && !n.text.trim()));
+  return nodes.length > 0 && nodes.every((n): n is Embed => n.type === 'embed') ? nodes : null;
+}
+
+/** `![[image.png]]` shows the image, `![[doc.pdf]]` a card that opens it; anything else stays a link. */
+function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: Theme }) {
+  const files = useContext(ProjectFiles);
+  return (
+    <View>
+      {embeds.map((e, i) => {
+        const target = wikiTarget(path, files, e.target);
+        const kind = target ? attachmentKind(target) : null;
+        if (target && kind === 'image') return <AttachmentImage key={i} path={target} width={e.width} />;
+        if (target && kind === 'pdf') return <PdfCard key={i} path={target} />;
+        return (
+          <Text
+            key={i}
+            style={[styles.p, { color: target || !files ? t.accentText : t.textMuted }]}
+            onPress={() => openWikiLink(path, files, e.target, e.heading)}>
+            {e.label}
+          </Text>
+        );
+      })}
+    </View>
+  );
 }
 
 /**

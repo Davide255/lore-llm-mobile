@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { findHeading, parse, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
+import { findHeading, parse, splitDisplayMath, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
 import { texToSvg } from './math.ts';
 
 const mathOf = (src: string) => parseInline(src).filter((n) => n.type === 'math');
@@ -89,4 +89,20 @@ test('findHeading matches heading text case-insensitively', () => {
   const blocks = parse('# Title\n\ntext\n\n## **Set**up\n');
   assert.equal(findHeading(blocks, 'setup'), 2);
   assert.equal(findHeading(blocks, 'missing'), -1);
+});
+
+test('embeds: ![[image.png|300]] and plain labels', () => {
+  assert.deepEqual(parseInline('![[img/a.png|300]]'), [{ type: 'embed', target: 'img/a.png', heading: null, width: 300, label: 'img/a.png' }]);
+  assert.deepEqual(parseInline('![[a.png|caption]]'), [{ type: 'embed', target: 'a.png', heading: null, width: null, label: 'caption' }]);
+  // The bang makes it an embed, not a wiki link.
+  assert.deepEqual(parseInline('x [[a]] ![[b.pdf]]').map((n) => n.type), ['text', 'wiki', 'text', 'embed']);
+});
+
+test('splitDisplayMath cuts a paragraph at $$…$$ and leaves $…$ and code alone', () => {
+  assert.deepEqual(splitDisplayMath('Before $$ x^2 $$ after $y$ and `$$no$$`'), [
+    { type: 'text', text: 'Before' },
+    { type: 'math', text: 'x^2' },
+    { type: 'text', text: 'after $y$ and `$$no$$`' },
+  ]);
+  assert.deepEqual(splitDisplayMath('plain'), [{ type: 'text', text: 'plain' }]);
 });

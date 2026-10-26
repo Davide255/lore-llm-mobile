@@ -6,6 +6,7 @@ import {
   KBError,
   type ActivityEvent,
   type Agent,
+  type AttachmentSource,
   type AgentPatch,
   type AgentRef,
   type Change,
@@ -732,8 +733,19 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async listFiles(project: string) {
-    await this.loadProjects(project);
-    return [...this.files.keys()].filter((p) => projectOf(p) === project).sort();
+    const { name, teamId } = parseProjectKey(project);
+    const { files } = await this.request<{ files: { path: string }[] }>('GET', '/v1/files', {
+      query: { project: name, attachments: 1, ...(teamId ? { owner: `t:${teamId}` } : {}) },
+    });
+    return files.map((f) => fromWire(teamId, f.path)).sort();
+  }
+
+  async attachmentSource(path: string): Promise<AttachmentSource> {
+    const token = await idToken();
+    if (!token) throw new KBError('invalid', 'Accesso richiesto');
+    const w = toWire(path);
+    const query = new URLSearchParams({ path: w.path, ...(w.owner ? { owner: w.owner } : {}) });
+    return { uri: `${API_URL}/v1/blob?${query}`, headers: { authorization: `Bearer ${token}` } };
   }
 
   async getFile(path: string): Promise<FileDocument> {

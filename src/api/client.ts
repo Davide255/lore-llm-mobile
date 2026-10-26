@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AttachmentSource,
   AgentPatch,
   ActivityEvent,
   Change,
@@ -36,8 +37,10 @@ export interface KnowledgeBaseClient {
   listFolder(path: string): Promise<FolderListing>;
   /** Every folder of a project (for "Move to…" and location pickers). */
   listFolderTree(project: string): Promise<string[]>;
-  /** Paths of every file of a project (to resolve [[wiki links]]). */
+  /** Paths of every file of a project, attachments included (to resolve [[wiki links]] and embeds). */
   listFiles(project: string): Promise<string[]>;
+  /** The authenticated URL of an attachment (image or PDF). */
+  attachmentSource(path: string): Promise<AttachmentSource>;
   getFile(path: string): Promise<FileDocument>;
   listRecentFiles(limit?: number): Promise<RecentFile[]>;
   markOpened(path: string): Promise<void>;

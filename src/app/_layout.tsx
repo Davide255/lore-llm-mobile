@@ -73,6 +73,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
               <Stack.Screen name="folder/[...path]" options={{ headerLargeTitle: true, title: '' }} />
               <Stack.Screen name="file/[...path]" options={{ title: '' }} />
+              <Stack.Screen name="attachment/[...path]" options={{ title: '' }} />
               <Stack.Screen name="change/[id]" options={{ title: '' }} />
               <Stack.Screen name="agent/[id]" options={{ title: '' }} />
               <Stack.Screen name="team/[id]" options={{ title: '' }} />

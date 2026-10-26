@@ -8,6 +8,7 @@ export const routes = {
   /** `heading`: scroll to the heading with this text once the file is shown. */
   file: (path: string, heading?: string | null) =>
     ({ pathname: '/file/[...path]', params: { path: splitPath(path), ...(heading ? { heading } : {}) } }) as unknown as Href,
+  attachment: (path: string) => ({ pathname: '/attachment/[...path]', params: { path: splitPath(path) } }) as unknown as Href,
   edit: (path: string) => ({ pathname: '/edit/[...path]', params: { path: splitPath(path) } }) as unknown as Href,
   entry: (path: string, kind: 'file' | 'folder') => (kind === 'file' ? routes.file(path) : routes.folder(path)),
   newFile: (parent: string, kind: 'file' | 'folder' | 'paste' = 'file') =>
