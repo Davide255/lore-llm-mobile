@@ -275,7 +275,11 @@ export type Inline =
   | { type: 'strike'; children: Inline[] }
   | { type: 'code'; text: string }
   | { type: 'math'; text: string; display: boolean }
-  | { type: 'link'; href: string; children: Inline[] };
+  | { type: 'link'; href: string; children: Inline[] }
+  /** Obsidian-style `[[target#heading|label]]`; `target` is empty for a link within the same file. */
+  | { type: 'wiki'; target: string; heading: string | null; label: string }
+  /** Obsidian `![[image.png|300]]`: the file is shown in place; `width` comes from a numeric alias. */
+  | { type: 'embed'; target: string; heading: string | null; width: number | null; label: string };
 
 const INLINE = new RegExp(
   [
@@ -289,11 +293,27 @@ const INLINE = new RegExp(
     /(\*\*[^*]+?\*\*|__[^_]+?__)/, // 6 bold
     /(~~[^~]+?~~)/, // 7 strike
     /(\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)/, // 8 italic
-    /(\[[^\]]+\]\([^)\s]+\))/, // 9 link
+    /(!\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 9 ![[embed]]
+    /(\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 10 [[wiki link]]
+    /(\[[^\]]+\]\([^)\s]+\))/, // 11 link
   ]
     .map((r) => r.source)
     .join('|'),
 );
+
+/** The inside of `[[...]]`: `target#heading|label`. Null when it names nothing. */
+function parseWikiLink(inner: string): Extract<Inline, { type: 'wiki' }> | null {
+  const bar = inner.indexOf('|');
+  const ref = (bar < 0 ? inner : inner.slice(0, bar)).trim();
+  const alias = bar < 0 ? '' : inner.slice(bar + 1).trim();
+  const hash = ref.indexOf('#');
+  const target = (hash < 0 ? ref : ref.slice(0, hash)).trim();
+  // `#a#b` points into nested headings: the last one is the destination.
+  const heading = hash < 0 ? null : ref.slice(hash + 1).split('#').pop()!.trim() || null;
+  if (!target && !heading) return null;
+  const label = alias || [target, heading].filter(Boolean).join(' > ');
+  return { type: 'wiki', target, heading, label };
+}
 
 export function parseInline(src: string): Inline[] {
   const out: Inline[] = [];
@@ -314,6 +334,17 @@ export function parseInline(src: string): Inline[] {
     else if (m[7]) out.push({ type: 'strike', children: parseInline(tok.slice(2, -2)) });
     else if (m[8]) out.push({ type: 'italic', children: parseInline(tok.slice(1, -1)) });
     else if (m[9]) {
+      const w = parseWikiLink(tok.slice(3, -2));
+      if (!w) out.push({ type: 'text', text: tok });
+      else {
+        const size = /^\d+$/.test(w.label) ? Number(w.label) : null;
+        out.push({ type: 'embed', target: w.target, heading: w.heading, width: size, label: size === null ? w.label : w.target });
+      }
+    } else if (m[10]) {
+      const w = parseWikiLink(tok.slice(2, -2));
+      if (w) out.push(w);
+      else out.push({ type: 'text', text: tok });
+    } else if (m[11]) {
       const lm = tok.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/)!;
       out.push({ type: 'link', href: lm[2], children: parseInline(lm[1]) });
     }
@@ -322,9 +353,38 @@ export function parseInline(src: string): Inline[] {
   return out;
 }
 
+export type Piece = { type: 'text'; text: string } | { type: 'math'; text: string };
+
+/** A paragraph cut at its `$$…$$` formulas, which are shown as blocks of their own. */
+export function splitDisplayMath(src: string): Piece[] {
+  const out: Piece[] = [];
+  let buf = '';
+  const flush = () => {
+    if (buf.trim()) out.push({ type: 'text', text: buf.trim() });
+    buf = '';
+  };
+  let rest = src;
+  while (rest) {
+    const m = rest.match(INLINE);
+    if (!m || m.index === undefined) {
+      buf += rest;
+      break;
+    }
+    const tok = m[0];
+    if (m[3]) {
+      buf += rest.slice(0, m.index);
+      flush();
+      out.push({ type: 'math', text: tok.slice(2, -2).trim() });
+    } else buf += rest.slice(0, m.index + tok.length);
+    rest = rest.slice(m.index + tok.length);
+  }
+  flush();
+  return out;
+}
+
 export function plainText(src: string): string {
   const walk = (nodes: Inline[]): string =>
-    nodes.map((n) => ('children' in n ? walk(n.children) : n.text)).join('');
+    nodes.map((n) => ('children' in n ? walk(n.children) : n.type === 'wiki' || n.type === 'embed' ? n.label : n.text)).join('');
   return walk(parseInline(src));
 }
 
@@ -355,4 +415,10 @@ export function toggleTaskAtLine(src: string, line: number): string {
 export function firstHeading(src: string): string | null {
   const b = parse(src).find((x) => x.type === 'heading' && x.level === 1);
   return b && b.type === 'heading' ? plainText(b.text) : null;
+}
+
+/** Index of the heading named `heading` (case-insensitive), or -1. */
+export function findHeading(blocks: Block[], heading: string): number {
+  const want = heading.trim().toLowerCase();
+  return blocks.findIndex((b) => b.type === 'heading' && plainText(b.text).trim().toLowerCase() === want);
 }

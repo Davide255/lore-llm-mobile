@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement, type ReactNode } from 'react';
+import { Children, Fragment, isValidElement, type ReactNode, type Ref } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,10 +18,16 @@ import { brand, fonts, useTheme } from '@/theme';
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
 /** Scroll container that cooperates with native large-title headers. */
-export function Screen({ children, contentContainerStyle, ...rest }: ScrollViewProps & { children: ReactNode }) {
+export function Screen({
+  children,
+  contentContainerStyle,
+  ref,
+  ...rest
+}: ScrollViewProps & { children: ReactNode; ref?: Ref<ScrollView> }) {
   const t = useTheme();
   return (
     <ScrollView
+      ref={ref}
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: t.background }}
