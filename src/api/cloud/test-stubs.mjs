@@ -8,6 +8,7 @@ const stubs = {
   'react-native': 'export const AppState = { currentState: "active", addEventListener() {} };',
   '@react-native-async-storage/async-storage':
     'export default { getItem: async () => null, setItem: async () => {}, removeItem: async (k) => { (globalThis.removedKeys ??= []).push(k); } };',
+  'expo-file-system': 'export class File {}; export const UploadType = { BINARY_CONTENT: 0 };',
   '@/auth/session': 'export const idToken = async () => "token";',
 };
 

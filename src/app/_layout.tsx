@@ -11,6 +11,7 @@ import { ActionSheetHost } from '@/components/action-sheet';
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
+import { resetUploads } from '@/data/uploads';
 import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
 import { loadAppearance } from '@/theme/appearance';
@@ -32,6 +33,7 @@ export default function RootLayout() {
     if (userId === undefined) return;
     let current = true;
     resetQueries();
+    resetUploads();
     setKnowledgeBaseUser(userId).then(() => current && setSpace(userId));
     return () => {
       current = false;

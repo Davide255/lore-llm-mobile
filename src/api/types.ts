@@ -308,7 +308,9 @@ export interface DeleteReceipt {
   token: string;
   path: string;
   kind: 'file' | 'folder';
-  /** Undo is possible until this instant. */
+  /** False when something deleted cannot be put back (attachments are not kept on the device). */
+  undoable: boolean;
+  /** Undo is possible until this instant (when `undoable`). */
   undoUntil: ISODate;
 }
 

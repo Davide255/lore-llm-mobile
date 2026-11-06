@@ -51,7 +51,7 @@ describe('cloud client loading flow', () => {
   it('opening a project loads its files and only its files', async () => {
     const alpha = await kb.listFolder('Alpha');
     const l = take();
-    assert.ok(l.includes('GET /v1/files?project=Alpha'));
+    assert.ok(l.includes('GET /v1/files?project=Alpha&attachments=1'));
     assert.deepEqual(fileGets(l).sort(), ['Alpha/a.md', 'Alpha/b.md', 'Alpha/index.md']); // checklist cached by etag
     assert.deepEqual(alpha.files.map((f) => f.name).sort(), ['a.md', 'b.md']);
     assert.deepEqual(alpha.checklist?.progress, { done: 1, total: 2 });
@@ -70,7 +70,7 @@ describe('cloud client loading flow', () => {
     assert.deepEqual(await reconcile(), ['Beta/checklist.md']);
     const l = take();
     assert.deepEqual(fileGets(l), ['Beta/checklist.md']);
-    assert.ok(!l.includes('GET /v1/files?project=Beta'));
+    assert.ok(!l.includes('GET /v1/files?project=Beta&attachments=1'));
     assert.deepEqual((await kb.getProject('Beta')).checklist, { done: 1, total: 2 });
   });
 
@@ -79,14 +79,14 @@ describe('cloud client loading flow', () => {
     await reconcile();
     const l = take();
     assert.deepEqual(fileGets(l), ['Alpha/a.md']);
-    assert.ok(l.includes('GET /v1/files?project=Alpha'));
-    assert.ok(!l.includes('GET /v1/files?project=Beta'));
+    assert.ok(l.includes('GET /v1/files?project=Alpha&attachments=1'));
+    assert.ok(!l.includes('GET /v1/files?project=Beta&attachments=1'));
   });
 
   it('writing into a project that was not opened loads it first', async () => {
     await assert.rejects(kb.createFile({ parent: 'Gamma', name: 'g.md', content: 'x' }), /esiste già/);
     const l = take();
-    assert.ok(l.includes('GET /v1/files?project=Gamma'));
+    assert.ok(l.includes('GET /v1/files?project=Gamma&attachments=1'));
     assert.ok(!l.some((r) => r.startsWith('PUT')));
     const created = await kb.createFile({ parent: 'Gamma', name: 'new.md', content: 'hello' });
     assert.equal(created.content, 'hello');
@@ -95,7 +95,7 @@ describe('cloud client loading flow', () => {
 
   it('search is what opens the remaining projects', async () => {
     const found = await kb.search('needle');
-    assert.ok(take().includes('GET /v1/files?project=Beta'));
+    assert.ok(take().includes('GET /v1/files?project=Beta&attachments=1'));
     assert.deepEqual(found.hits.map((h) => h.path), ['Alpha/b.md']);
   });
 

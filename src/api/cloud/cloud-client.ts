@@ -41,6 +41,7 @@ import {
   type AuditRow,
   type Writer,
 } from './agents';
+import { deviceFiles, type LocalFiles } from './local-file';
 import { idToken } from '@/auth/session';
 import { diffLines, diffStats } from '@/lib/diff';
 import { checklistProgress, parse, plainText } from '@/lib/markdown';
@@ -59,12 +60,15 @@ import {
   teamProjectKey,
   toWire,
 } from '@/lib/paths';
+import { isAttachment } from '@/lib/upload-plan';
 
 /**
  * The knowledge base in the user's cloud space (R2 behind the lore-llm
  * Worker). Launch loads the project list and each project's checklist
  * (`/v1/projects`); a project's files are mirrored (`/v1/files?project=`,
  * contents refetched only when the etag changes) the first time it is opened.
+ * Attachments (images, PDFs) are listed with the notes but never downloaded:
+ * only their name, size and etag are mirrored.
  * Empty folders and project metadata live on the device — object storage has
  * neither — and a cheap `/v1/version` poll tells when to look at the audit log
  * to pick up agent writes, keeping a diff of each one it sees happen.
@@ -216,6 +220,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private pendingDeletes = new Map<string, PendingDelete>();
   private listeners = new Set<(e: ServerEvent) => void>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /** How picked files are read and sent; tests swap it. */
+  local: LocalFiles = deviceFiles;
 
   constructor() {
     setInterval(() => this.poll(), POLL_MS);
@@ -332,7 +338,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   /** Download the contents of the files whose cached etag differs, recording them in `into`. */
   private async fetchStale(list: FileVersion[], into: Map<string, FileVersion>): Promise<FileChange[]> {
     const changes: FileChange[] = [];
-    const queue = list.filter((f) => this.cache.get(f.path)?.etag !== f.etag);
+    const queue = list.filter((f) => !isAttachment(f.path) && this.cache.get(f.path)?.etag !== f.etag);
     await Promise.all(
       Array.from({ length: Math.min(6, queue.length) }, async () => {
         for (let f = queue.shift(); f; f = queue.shift()) {
@@ -421,7 +427,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private async syncProject(project: string): Promise<FileChange[]> {
     const { name, teamId } = parseProjectKey(project);
     const { files: wire } = await this.request<{ files: FileVersion[] }>('GET', '/v1/files', {
-      query: { project: name, ...(teamId ? { owner: `t:${teamId}` } : {}) },
+      query: { project: name, attachments: 1, ...(teamId ? { owner: `t:${teamId}` } : {}) },
     });
     const list = wire.map((f) => ({ ...f, path: fromWire(teamId, f.path) }));
     const next = new Map(list.map((f) => [f.path, f]));
@@ -648,8 +654,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private toProject(name: string): Project {
     // Opened projects are counted from their files; the others from the project list.
     const summary = this.summaries.get(name);
+    // Counted like the project list does: notes only, without the generated index.
     const files = this.filesUnder(name)
-      .filter((p) => roleOf(p) !== 'index')
+      .filter((p) => roleOf(p) !== 'index' && !isAttachment(p))
       .map((p) => this.files.get(p)!);
     const opened = this.loaded.has(name);
     const checklist = this.cache.get(joinPath(name, CHECKLIST_FILE));
@@ -809,6 +816,70 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     return this.getFile(path);
   }
 
+  // ─── upload ───────────────────────────────────────────────────────────────
+
+  async listPaths(folder: string) {
+    await this.loadProjects(folder);
+    return this.filesUnder(folder);
+  }
+
+  /**
+   * Puts a picked file at `path`. A note is read and written like any other note; an attachment goes
+   * up as the raw request body, with the bytes sent reported as they leave the device. The mirror
+   * learns the new file right away; `finishUploads` pulls the rest once a batch is done.
+   */
+  async uploadFile(path: string, source: { uri: string; size: number }, onProgress?: (sent: number, total: number) => void, signal?: AbortSignal) {
+    await this.ready();
+    if (!path.includes('/')) throw new KBError('invalid', 'I file devono stare dentro un progetto');
+    this.assertWritable(path);
+    if (!isAttachment(path)) {
+      if (!/\.md$/i.test(path)) throw new KBError('invalid', 'Tipo di file non supportato');
+      const content = await this.local.readText(source.uri);
+      await this.put(path, content, { overwrite: false });
+      onProgress?.(source.size, source.size);
+      return;
+    }
+    const token = await idToken();
+    if (!token) throw new KBError('invalid', 'Accesso richiesto');
+    const url = this.blobUrl(toWire(path));
+    let res: { status: number; body: string };
+    try {
+      res = await this.local.putBinary(url, source.uri, {
+        headers: { authorization: `Bearer ${token}` },
+        onProgress: onProgress && ((sent, total) => onProgress(sent, total || source.size)),
+        signal,
+      });
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      throw new KBError('network', 'Caricamento interrotto: controlla la connessione');
+    }
+    const data = (() => {
+      try {
+        return JSON.parse(res.body) as { error?: string; file?: FileVersion };
+      } catch {
+        return {} as { error?: string; file?: FileVersion };
+      }
+    })();
+    if (res.status < 200 || res.status >= 300 || !data.file) throw toError(res.status, data.error);
+    this.files.set(path, { ...data.file, path });
+    onProgress?.(source.size, source.size);
+  }
+
+  async attachmentRequest(path: string) {
+    const token = await idToken();
+    if (!token) throw new KBError('invalid', 'Accesso richiesto');
+    const w = toWire(path);
+    return { url: this.blobUrl(w), headers: { authorization: `Bearer ${token}` } };
+  }
+
+  private blobUrl(w: { owner: string | null; path: string }) {
+    return `${API_URL}/v1/blob?path=${encodeURIComponent(w.path)}${w.owner ? `&owner=${encodeURIComponent(w.owner)}` : ''}`;
+  }
+
+  async finishUploads() {
+    await this.afterWrite();
+  }
+
   // Object storage has no empty folders: they live here until a file is put in them.
   async createFolder(parent: string, name: string) {
     await this.ready();
@@ -905,6 +976,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   async duplicate(path: string) {
     await this.loadProjects(path);
     if (!this.files.has(path)) throw new KBError('not_found', 'File non trovato');
+    if (isAttachment(path)) throw new KBError('invalid', 'Gli allegati non si duplicano');
     const content = this.cache.get(path)?.content ?? (await this.getFile(path)).content;
     const stem = basename(path).replace(/\.md$/, '');
     let n = 1;
@@ -922,11 +994,13 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const isFile = this.files.has(path);
     if (!isFile && !this.allFolders().has(path)) throw new KBError('not_found', 'Elemento non trovato');
     const affected = isFile ? [path] : this.filesUnder(path);
+    // Attachments are never downloaded, so there is nothing to put back: deleting one cannot be undone.
+    const undoable = !affected.some(isAttachment);
     const item: PendingDelete = {
       path,
       kind: isFile ? 'file' : 'folder',
       contents: Object.fromEntries(
-        affected.filter((p) => roleOf(p) !== 'index').map((p) => [p, this.cache.get(p)?.content ?? '']),
+        affected.filter((p) => roleOf(p) !== 'index' && !isAttachment(p)).map((p) => [p, this.cache.get(p)?.content ?? '']),
       ),
       folders: isFile ? [] : [...this.allFolders()].filter((f) => under(f, path)),
     };
@@ -952,7 +1026,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const token = uid();
     this.pendingDeletes.set(token, item);
     setTimeout(() => this.pendingDeletes.delete(token), 60_000);
-    return { token, path, kind: item.kind, undoUntil: new Date(Date.now() + UNDO_WINDOW_MS).toISOString() };
+    return { token, path, kind: item.kind, undoable, undoUntil: new Date(Date.now() + UNDO_WINDOW_MS).toISOString() };
   }
 
   async undoRemove(token: string) {

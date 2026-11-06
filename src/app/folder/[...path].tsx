@@ -1,12 +1,14 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { RefreshControl, View } from 'react-native';
+import { Platform, RefreshControl, View } from 'react-native';
 
 import { chooseTeamForProject, confirmDelete } from '@/components/entry-actions';
 import { EntryRow } from '@/components/entry-row';
 import { BottomAction, HeaderItems, type MenuItem } from '@/components/header-items';
 import { Icon } from '@/components/icon';
+import { UploadRow } from '@/components/upload-row';
 import { Banner, EmptyState, ErrorState, IconWell, Loading, Screen, Section } from '@/components/ui';
 import { useFolder, useProject } from '@/data/hooks';
+import { uploadFilesInto, uploadFolderInto, useUploads } from '@/data/uploads';
 import { relativeTime } from '@/lib/format';
 import { projectLabel, projectOf, teamOf } from '@/lib/paths';
 import { pathParam, routes } from '@/lib/routes';
@@ -25,11 +27,19 @@ export default function FolderScreen() {
   // Until the folder has loaded we do not know the role: offer nothing rather than something the server would refuse.
   const writable = !!data && canWrite(data.access);
   const readOnly = !!data && !writable;
+  const uploads = useUploads(path);
 
   const create: MenuItem[] = [
     { label: 'Nuovo file .md', icon: 'noteAdd', onPress: () => router.push(routes.newFile(path, 'file')) },
     { label: 'Nuova cartella', icon: 'createFolder', onPress: () => router.push(routes.newFile(path, 'folder')) },
     { label: 'Incolla markdown', icon: 'paste', onPress: () => router.push(routes.newFile(path, 'paste')) },
+    // The system pickers (and the upload itself) are native: nothing to offer on the web build.
+    ...(Platform.OS === 'web'
+      ? []
+      : [
+          { label: 'Carica file…', icon: 'uploadFile' as const, onPress: () => uploadFilesInto(path) },
+          { label: 'Carica cartella…', icon: 'uploadFolder' as const, onPress: () => uploadFolderInto(path) },
+        ]),
   ];
   const more: MenuItem[] = [
     { label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(path, true)) },
@@ -49,7 +59,7 @@ export default function FolderScreen() {
     },
   ];
 
-  const empty = data && !data.folders.length && !data.files.length;
+  const empty = data && !data.folders.length && !data.files.length && !uploads.length;
 
   return (
     <>
@@ -89,19 +99,26 @@ export default function FolderScreen() {
             </Section>
           )}
 
+          {/* Uploads sit at the top of their section, grayed, until they arrive in the list. */}
           <Section header="Cartelle">
+            {uploads.filter((u) => u.kind === 'folder').map((u) => (
+              <UploadRow key={u.id} item={u} />
+            ))}
             {data.folders.map((f) => (
               <EntryRow key={f.path} entry={f} />
             ))}
           </Section>
 
           <Section header="File">
+            {uploads.filter((u) => u.kind === 'file').map((u) => (
+              <UploadRow key={u.id} item={u} />
+            ))}
             {data.files.map((f) => (
               <EntryRow key={f.path} entry={f} />
             ))}
           </Section>
 
-          {empty && <EmptyState icon="doc" title="Cartella vuota" message="Usa + per creare un file o una cartella." />}
+          {empty && <EmptyState icon="doc" title="Cartella vuota" message="Usa + per creare o caricare un file o una cartella." />}
 
           <View style={{ marginTop: 18, gap: 10 }}>
             {!empty && (

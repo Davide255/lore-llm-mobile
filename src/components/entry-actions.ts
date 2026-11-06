@@ -8,6 +8,7 @@ import { kb, type Entry } from '@/api';
 import { actions, attempt } from '@/data/hooks';
 import { isProjectRoot, projectLabel, teamProjectKey } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { isAttachment } from '@/lib/upload-plan';
 import { canWrite } from '@/lib/teams';
 
 export function confirmDelete(entry: Pick<Entry, 'path' | 'name' | 'kind'> & { fileCount?: number }, onDeleted?: () => void) {
@@ -25,6 +26,11 @@ export function confirmDelete(entry: Pick<Entry, 'path' | 'name' | 'kind'> & { f
         const receipt = await attempt(() => actions.remove(entry.path), 'Eliminazione non riuscita');
         if (!receipt) return;
         onDeleted?.();
+        // Attachments are not kept on the device, so there is nothing to put back.
+        if (!receipt.undoable) {
+          showToast({ icon: 'delete', subject: entry.name, message: 'eliminato' });
+          return;
+        }
         showToast({
           icon: 'delete',
           subject: entry.name,
@@ -88,17 +94,19 @@ export async function chooseTeamForProject(project: string, onMoved?: (newKey: s
 export function entryMenu(entry: Entry): MenuItem[] {
   const isFile = entry.kind === 'file';
   const special = isFile && entry.role !== 'doc';
+  const attachment = isFile && isAttachment(entry.name);
   const readOnly = !canWrite(entry.access);
   const items: MenuItem[] = [{ label: 'Apri', icon: 'open', onPress: () => router.push(routes.entry(entry.path, entry.kind)) }];
-  if (isFile && entry.role !== 'index' && !readOnly) items.push({ label: 'Modifica', icon: 'edit', onPress: () => router.push(routes.edit(entry.path)) });
+  if (isFile && !attachment && entry.role !== 'index' && !readOnly) items.push({ label: 'Modifica', icon: 'edit', onPress: () => router.push(routes.edit(entry.path)) });
   if (!special && !readOnly) {
-    items.push({ label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(entry.path)) });
+    // The rename screen enforces the slug rule for notes; an uploaded file keeps the name it came with.
+    if (!attachment) items.push({ label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(entry.path)) });
     if (!isProjectRoot(entry.path)) {
       items.push({ label: 'Sposta in…', icon: 'move', onPress: () => router.push(routes.move(entry.path)) });
     }
   }
-  if (isFile && !special && !readOnly) items.push({ label: 'Duplica', icon: 'duplicate', onPress: () => duplicateEntry(entry.path) });
-  if (isFile) items.push({ label: 'Condividi', icon: 'share', onPress: () => shareEntry(entry.path, entry.name) });
+  if (isFile && !special && !attachment && !readOnly) items.push({ label: 'Duplica', icon: 'duplicate', onPress: () => duplicateEntry(entry.path) });
+  if (isFile && !attachment) items.push({ label: 'Condividi', icon: 'share', onPress: () => shareEntry(entry.path, entry.name) });
   if (!readOnly && !(isFile && entry.role === 'index')) {
     items.push({
       label: 'Elimina',

@@ -10,6 +10,10 @@ interface Stored {
   uploaded: string;
 }
 
+const ATTACHMENT_TYPE = /\.(png|jpe?g|gif|webp|svg|pdf)$/i;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const isNote = (path: string) => path.toLowerCase().endsWith('.md');
+
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const etagOf = (c: string) => 'e' + [...c].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7).toString(16);
 
@@ -52,12 +56,13 @@ export function createFakeWorker() {
     const owner = q.get('owner') ?? '';
     const role: TeamRole | null = owner === '' ? 'owner' : (teams.get(owner.slice(2))?.role ?? null);
     const route = `${method} ${url.pathname}`;
-    const isFileRoute = /^(GET|PUT|DELETE|POST) \/v1\/(file|files|files\/move|folder|projects)$/.test(route);
+    const isFileRoute = /^(GET|PUT|DELETE|POST) \/v1\/(file|files|files\/move|folder|projects|blob)$/.test(route);
     if (isFileRoute) {
       if (!role) return ok({ error: 'Forbidden' }, 403);
       if (method !== 'GET' && role === 'viewer') return ok({ error: 'Forbidden' }, 403);
     }
-    const body = init?.body ? JSON.parse(init.body as string) : {};
+    // Attachments travel as raw bytes, everything else as JSON.
+    const body = init?.body && url.pathname !== '/v1/blob' ? JSON.parse(init.body as string) : {};
 
     if (route === 'GET /v1/version') {
       const scopes = Object.fromEntries([...teams.keys()].map((id) => [`t:${id}`, { version: versions.get(`t:${id}`) ?? 0, updated_at: null }]));
@@ -79,6 +84,7 @@ export function createFakeWorker() {
     if (route === 'GET /v1/projects') {
       const by = new Map<string, { name: string; file_count: number; size: number; updated_at: string; checklist: unknown }>();
       for (const [path, f] of space(owner)) {
+        if (!isNote(path)) continue;
         const [name = '', ...rest] = path.split('/');
         const inProject = rest.join('/');
         const row = by.get(name) ?? { name, file_count: 0, size: 0, updated_at: '', checklist: null };
@@ -93,7 +99,8 @@ export function createFakeWorker() {
     }
     if (route === 'GET /v1/files') {
       const prefix = q.get('project') ? `${q.get('project')}/` : '';
-      return ok({ files: [...space(owner).keys()].filter((p) => p.startsWith(prefix)).sort().map((p) => meta(owner, p)) });
+      const withAttachments = q.get('attachments') === '1';
+      return ok({ files: [...space(owner).keys()].filter((p) => p.startsWith(prefix) && (withAttachments || isNote(p))).sort().map((p) => meta(owner, p)) });
     }
     if (route === 'GET /v1/file') {
       const p = q.get('path')!;
@@ -103,6 +110,15 @@ export function createFakeWorker() {
       const p = q.get('path')!;
       if (space(owner).has(p) && !body.overwrite) return ok({ error: 'File already exists' }, 400);
       put(owner, p, body.content);
+      return ok({ action: 'CREATE', file: meta(owner, p) }, 201);
+    }
+    if (route === 'PUT /v1/blob') {
+      const p = q.get('path')!;
+      if (!ATTACHMENT_TYPE.test(p)) return ok({ error: 'Path must end in .md or an allowed attachment type' }, 400);
+      if (space(owner).has(p) && q.get('overwrite') !== '1') return ok({ error: `File already exists: ${p}` }, 400);
+      const bytes = String(init?.body ?? '');
+      if (bytes.length > MAX_ATTACHMENT_BYTES) return ok({ error: 'File too large (max 10485760 bytes)' }, 400);
+      put(owner, p, bytes);
       return ok({ action: 'CREATE', file: meta(owner, p) }, 201);
     }
     if (route === 'DELETE /v1/file') {

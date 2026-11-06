@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
 
+import { AttachmentView } from '@/components/attachment-view';
 import { HeaderItems } from '@/components/header-items';
 import { MarkdownView } from '@/components/markdown';
 import { AgentAvatar } from '@/components/identity';
@@ -12,12 +13,18 @@ import { checklistProgress } from '@/lib/markdown';
 import { projectLabel } from '@/lib/paths';
 import { pathParam, routes } from '@/lib/routes';
 import { canWrite } from '@/lib/teams';
+import { isAttachment } from '@/lib/upload-plan';
 import { useTheme } from '@/theme';
 
-/** A3 index.md (read-only) · A4 checklist.md · A5 regular document. */
+/** An uploaded image or PDF has its own view; everything else is a note. */
 export default function FileScreen() {
-  const t = useTheme();
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
+  return isAttachment(path) ? <AttachmentView path={path} /> : <NoteScreen path={path} />;
+}
+
+/** A3 index.md (read-only) · A4 checklist.md · A5 regular document. */
+function NoteScreen({ path }: { path: string }) {
+  const t = useTheme();
   const file = useFile(path);
   const doc = file.data;
 

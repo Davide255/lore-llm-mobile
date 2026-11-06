@@ -50,7 +50,7 @@ describe('team projects in the cloud client', () => {
   it('opening a team project loads its files with the team as owner', async () => {
     const plan = await kb.listFolder('Plan@t1');
     const l = requests();
-    assert.ok(l.includes('GET /v1/files?project=Plan&owner=t:t1'));
+    assert.ok(l.includes('GET /v1/files?project=Plan&attachments=1&owner=t:t1'));
     assert.deepEqual(fileGets(l), ['t:t1:Plan/a.md']);
     assert.equal(plan.name, 'Plan'); // the label, not the key
     assert.equal(plan.access, 'editor');

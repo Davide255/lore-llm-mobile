@@ -53,6 +53,24 @@ export interface KnowledgeBaseClient {
   remove(path: string): Promise<DeleteReceipt>;
   undoRemove(token: string): Promise<void>;
 
+  // Upload
+  /** Every file path under a folder (its project is loaded first): what an upload must not overwrite. */
+  listPaths(folder: string): Promise<string[]>;
+  /**
+   * Puts a picked local file at `path`: a note is written like any note, an attachment is streamed to the
+   * server with `onProgress(bytesSent, totalBytes)`. Aborting `signal` stops it. Fails if the path is taken.
+   */
+  uploadFile(
+    path: string,
+    source: { uri: string; size: number },
+    onProgress?: (sent: number, total: number) => void,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  /** How to download an attachment's bytes: the URL and the headers that authorize it (for an image view). */
+  attachmentRequest(path: string): Promise<{ url: string; headers: Record<string, string> }>;
+  /** After a batch of uploads: pulls what the server did meanwhile (the recompiled index.md). */
+  finishUploads(): Promise<void>;
+
   // Search
   search(query: string, project?: string | null): Promise<SearchResponse>;
   listRecentSearches(): Promise<string[]>;

@@ -11,8 +11,14 @@ import { Cell, IconWell } from './ui';
 import type { Entry } from '@/api';
 import { fileSize, plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
+import { attachmentKind, isAttachment } from '@/lib/upload-plan';
 import { canWrite } from '@/lib/teams';
 import { useTheme } from '@/theme';
+
+function attachmentIcon(name: string): IconName {
+  const kind = attachmentKind(name);
+  return kind === 'pdf' ? 'pdf' : kind === 'image' ? 'image' : 'doc';
+}
 
 function SwipeAction({ icon, label, color, onPress }: { icon: IconName; label: string; color: string; onPress: () => void }) {
   return (
@@ -52,7 +58,7 @@ export function EntryRow({
     entry.kind === 'folder' ? (
       <IconWell name="folderFill" color={t.folder} filled />
     ) : (
-      <IconWell name={entry.role === 'index' ? 'index' : entry.role === 'checklist' ? 'checklist' : 'doc'} />
+      <IconWell name={entry.role === 'index' ? 'index' : entry.role === 'checklist' ? 'checklist' : attachmentIcon(entry.name)} />
     );
   const defaultSubtitle =
     entry.kind === 'folder'
@@ -109,15 +115,17 @@ export function EntryRow({
       containerStyle={{ backgroundColor: t.cell }}
       renderRightActions={() => (
         <View style={{ flexDirection: 'row' }}>
-          <SwipeAction
-            icon="rename"
-            label="Rinomina"
-            color={t.swipeNeutral}
-            onPress={() => {
-              swipe.current?.close();
-              router.push(routes.rename(entry.path));
-            }}
-          />
+          {!(isFile && isAttachment(entry.name)) && (
+            <SwipeAction
+              icon="rename"
+              label="Rinomina"
+              color={t.swipeNeutral}
+              onPress={() => {
+                swipe.current?.close();
+                router.push(routes.rename(entry.path));
+              }}
+            />
+          )}
           <SwipeAction
             icon="delete"
             label="Elimina"

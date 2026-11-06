@@ -21,6 +21,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -231,11 +232,12 @@ const ftpOptions = () => {
   return { user, password, tls: process.env.OTA_FTP_TLS !== "0" };
 };
 
-// Assets are content-hashed: an HTTP 200 on the public URL means it is already there.
-const alreadyOnline = async (url) => {
+// Assets are content-hashed, so a file is already there if the public URL answers 200 with the
+// same length: a bare 200 also matches the empty file an interrupted upload leaves behind.
+const alreadyOnline = async (url, size) => {
   try {
     const res = await fetch(url, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(15000) });
-    return res.status === 200;
+    return res.status === 200 && Number(res.headers.get("content-length")) === size;
   } catch {
     return false;
   }
@@ -251,7 +253,7 @@ const upload = async (channel) => {
   const assetsDir = path.join(dir, "assets");
   let skipped = 0;
   for (const file of readdirSync(assetsDir)) {
-    if (await alreadyOnline(`${otaConfig.baseUrl}/${channel}/${platform}/assets/${file}`)) {
+    if (await alreadyOnline(`${otaConfig.baseUrl}/${channel}/${platform}/assets/${file}`, statSync(path.join(assetsDir, file)).size)) {
       skipped++;
       continue;
     }
