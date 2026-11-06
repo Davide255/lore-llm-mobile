@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { fromWire, parseProjectKey, projectLabel, teamOf, teamProjectKey, toWire } from './paths.ts';
+import { fromWire, parseProjectKey, projectLabel, resolveWikiTarget, teamOf, teamProjectKey, toWire } from './paths.ts';
 
 describe('team project keys', () => {
   it('builds and parses keys; personal projects have no team', () => {
@@ -25,5 +25,18 @@ describe('team project keys', () => {
     assert.equal(fromWire('t1', 'Alpha/docs/a.md'), 'Alpha@t1/docs/a.md');
     assert.equal(fromWire(null, 'Alpha/docs/a.md'), 'Alpha/docs/a.md');
     assert.equal(fromWire('t1', toWire('Alpha@t1/x.md').path), 'Alpha@t1/x.md');
+  });
+});
+
+describe('wiki links', () => {
+  it('resolves a name or path, any case; the closest file wins', () => {
+    const files = ['P/index.md', 'P/notes.md', 'P/plans/Big-Plan.md', 'P/plans/notes.md', 'P/docs/notes.md', 'Q/notes.md'];
+    assert.equal(resolveWikiTarget('P/plans/x.md', 'notes', files), 'P/plans/notes.md');
+    assert.equal(resolveWikiTarget('P/index.md', 'notes', files), 'P/notes.md');
+    assert.equal(resolveWikiTarget('P/index.md', 'docs/notes.md', files), 'P/docs/notes.md');
+    assert.equal(resolveWikiTarget('P/index.md', 'Big Plan', files), 'P/plans/Big-Plan.md');
+    assert.equal(resolveWikiTarget('P/index.md', 'big-plan', files), 'P/plans/Big-Plan.md');
+    assert.equal(resolveWikiTarget('Q/notes.md', 'index', files), null);
+    assert.equal(resolveWikiTarget('P/index.md', 'missing', files), null);
   });
 });

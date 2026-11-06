@@ -1,13 +1,18 @@
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { createContext, Fragment, type ComponentProps, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle } from 'react-native';
+
+import { useProjectFiles } from '@/data/hooks';
 
 import { Icon } from './icon';
 import { InlineMath, lineHeightWithMath, MathBlock } from './math';
-import { parse, parseInline, parseTable, type Block, type Inline } from '@/lib/markdown';
-import { resolveLink } from '@/lib/paths';
+import { attachmentKind } from '@/lib/attachments';
+import { findHeading, parse, parseInline, parseTable, splitDisplayMath, type Block, type Inline } from '@/lib/markdown';
+import { projectOf, resolveLink, resolveWikiTarget } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { AttachmentImage, PdfCard } from './attachment';
+import { showToast } from './toast';
 import { fonts, useTheme, type Theme } from '@/theme';
 
 function openLink(fromFile: string, href: string) {
@@ -16,7 +21,35 @@ function openLink(fromFile: string, href: string) {
     if (/^https?:/i.test(href)) WebBrowser.openBrowserAsync(href);
     return;
   }
+  if (attachmentKind(target)) {
+    router.push(routes.attachment(target));
+    return;
+  }
   router.push(target.endsWith('.md') ? routes.file(target) : routes.folder(target));
+}
+
+/** Paths of the project's files, for resolving `[[wiki links]]`; null until loaded. */
+const ProjectFiles = createContext<string[] | null>(null);
+
+function wikiTarget(fromFile: string, files: string[] | null, target: string): string | null {
+  return target ? (files ? resolveWikiTarget(fromFile, target, files) : null) : fromFile;
+}
+
+function openWikiLink(fromFile: string, files: string[] | null, target: string, heading: string | null) {
+  const path = wikiTarget(fromFile, files, target);
+  if (path === null) {
+    showToast({ icon: 'link', subject: target, message: files ? 'non trovato' : 'caricamento dei file in corso' });
+    return;
+  }
+  if (path === fromFile) {
+    if (heading) router.setParams({ heading });
+    return;
+  }
+  if (attachmentKind(path)) {
+    router.push(routes.attachment(path));
+    return;
+  }
+  router.push(path.endsWith('.md') ? routes.file(path, heading) : routes.folder(path.split('/').slice(0, -1).join('/')));
 }
 
 export function InlineText({
@@ -35,6 +68,7 @@ export function InlineText({
   lineHeight: number;
   color: ColorValue;
 }) {
+  const files = useContext(ProjectFiles);
   const render = (nodes: Inline[]): ReactNode =>
     nodes.map((n, i) => {
       switch (n.type) {
@@ -72,6 +106,24 @@ export function InlineText({
               {render(n.children)}
             </Text>
           );
+        case 'embed':
+          // Only a paragraph of nothing but embeds shows them in place (see `EmbedBlock`).
+          return (
+            <Text key={i} style={{ color: t.accentText }} onPress={() => openWikiLink(path, files, n.target, n.heading)}>
+              {n.label}
+            </Text>
+          );
+        case 'wiki': {
+          const found = wikiTarget(path, files, n.target) !== null;
+          return (
+            <Text
+              key={i}
+              style={{ color: found || !files ? t.accentText : t.textMuted }}
+              onPress={() => openWikiLink(path, files, n.target, n.heading)}>
+              {n.label}
+            </Text>
+          );
+        }
       }
     });
   return <>{render(parseInline(source))}</>;
@@ -81,25 +133,84 @@ export function MarkdownView({
   content,
   path,
   onToggleTask,
+  anchor,
+  onAnchor,
 }: {
   content: string;
   /** File path, for resolving relative links. */
   path: string;
+  /** Text of a heading to scroll to. */
+  anchor?: string | null;
+  /** Called with the heading's offset in the parent's content (a scroll view). */
+  onAnchor?: (y: number) => void;
   /** When set, task checkboxes are interactive and report their source line. */
   onToggleTask?: (line: number) => void;
 }) {
   const t = useTheme();
   const blocks = useMemo(() => parse(content), [content]);
+  const files = useProjectFiles(projectOf(path)).data ?? null;
+  const target = anchor ? findHeading(blocks, anchor) : -1;
   return (
-    <View>
-      {blocks.map((b, i) => (
-        <BlockView key={`${b.line}-${i}`} block={b} prev={blocks[i - 1]} path={path} t={t} onToggleTask={onToggleTask} />
-      ))}
+    <ProjectFiles.Provider value={files}>
+      <AnchorScroll active={target >= 0} anchor={anchor} onAnchor={onAnchor}>
+        {blocks.map((b, i) => (
+          <BlockView key={`${b.line}-${i}`} block={b} prev={blocks[i - 1]} path={path} t={t} onToggleTask={onToggleTask} anchored={i === target} />
+        ))}
+      </AnchorScroll>
+    </ProjectFiles.Provider>
+  );
+}
+
+/** The blocks of a document; reports the offset of the anchored one (see `BlockView`). */
+const AnchorContext = createContext<(y: number) => void>(() => {});
+
+function AnchorScroll({
+  children,
+  active,
+  anchor,
+  onAnchor,
+}: {
+  children: ReactNode;
+  active: boolean;
+  anchor?: string | null;
+  onAnchor?: (y: number) => void;
+}) {
+  const top = useRef(0);
+  const offset = useRef<number | null>(null);
+  const done = useRef<string | null>(null);
+  const flush = () => {
+    if (!active || offset.current === null || done.current === anchor) return;
+    done.current = anchor ?? null;
+    onAnchor?.(top.current + offset.current);
+  };
+  useEffect(() => {
+    done.current = null;
+    offset.current = null;
+  }, [anchor]);
+  return (
+    <View
+      onLayout={(e) => {
+        top.current = e.nativeEvent.layout.y;
+        flush();
+      }}>
+      <AnchorContext.Provider
+        value={(y) => {
+          offset.current = y;
+          flush();
+        }}>
+        {children}
+      </AnchorContext.Provider>
     </View>
   );
 }
 
-function BlockView({
+function BlockView({ anchored, ...props }: ComponentProps<typeof BlockContent> & { anchored?: boolean }) {
+  const report = useContext(AnchorContext);
+  const content = <BlockContent {...props} />;
+  return anchored ? <View onLayout={(e) => report(e.nativeEvent.layout.y)}>{content}</View> : content;
+}
+
+function BlockContent({
   block: b,
   prev,
   path,
@@ -126,8 +237,34 @@ function BlockView({
       const style = b.level === 1 ? styles.h1 : b.level === 2 ? styles.h2 : styles.h3;
       return prose(b.text, style.fontSize, style.lineHeight, t.text, [style, !prev && { marginTop: 0 }]);
     }
-    case 'paragraph':
-      return prose(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
+    case 'paragraph': {
+      const embeds = embedsOnly(b.text);
+      if (embeds) return <EmbedBlock embeds={embeds} path={path} t={t} />;
+      const pieces = splitDisplayMath(b.text);
+      if (!pieces.some((p) => p.type === 'math')) return prose(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
+      // Formulas written as `$$…$$` in a paragraph stand on their own, centered between the text around them.
+      return (
+        <View>
+          {pieces.map((p, i) =>
+            p.type === 'text' ? (
+              <Fragment key={i}>{prose(p.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p)}</Fragment>
+            ) : (
+              <MathBlock
+                key={i}
+                tex={p.text}
+                fontSize={styles.p.fontSize}
+                color={t.text}
+                fallback={
+                  <View style={[styles.code, { backgroundColor: t.cell }]}>
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, lineHeight: 19.5, color: t.textSecondary }}>{p.text}</Text>
+                  </View>
+                }
+              />
+            ),
+          )}
+        </View>
+      );
+    }
     case 'bullet':
     case 'ordered':
       return (
@@ -177,6 +314,38 @@ function BlockView({
     case 'rule':
       return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
   }
+}
+
+type Embed = Extract<Inline, { type: 'embed' }>;
+
+/** The embeds of a paragraph made of nothing else, or null. */
+function embedsOnly(source: string): Embed[] | null {
+  if (!source.includes('![[')) return null;
+  const nodes = parseInline(source).filter((n) => !(n.type === 'text' && !n.text.trim()));
+  return nodes.length > 0 && nodes.every((n): n is Embed => n.type === 'embed') ? nodes : null;
+}
+
+/** `![[image.png]]` shows the image, `![[doc.pdf]]` a card that opens it; anything else stays a link. */
+function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: Theme }) {
+  const files = useContext(ProjectFiles);
+  return (
+    <View>
+      {embeds.map((e, i) => {
+        const target = wikiTarget(path, files, e.target);
+        const kind = target ? attachmentKind(target) : null;
+        if (target && kind === 'image') return <AttachmentImage key={i} path={target} width={e.width} />;
+        if (target && kind === 'pdf') return <PdfCard key={i} path={target} />;
+        return (
+          <Text
+            key={i}
+            style={[styles.p, { color: target || !files ? t.accentText : t.textMuted }]}
+            onPress={() => openWikiLink(path, files, e.target, e.heading)}>
+            {e.label}
+          </Text>
+        );
+      })}
+    </View>
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
-import { RefreshControl, Share, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentView } from '@/components/attachment-view';
 import { HeaderItems } from '@/components/header-items';
@@ -25,6 +25,8 @@ export default function FileScreen() {
 /** A3 index.md (read-only) · A4 checklist.md · A5 regular document. */
 function NoteScreen({ path }: { path: string }) {
   const t = useTheme();
+  const params = useLocalSearchParams<{ path: string[]; heading?: string }>();
+  const scroll = useRef<ScrollView>(null);
   const file = useFile(path);
   const doc = file.data;
 
@@ -59,6 +61,7 @@ function NoteScreen({ path }: { path: string }) {
         <ErrorState error={file.error} onRetry={file.refresh} />
       ) : (
         <Screen
+          ref={scroll}
           contentContainerStyle={{ paddingTop: 14 }}
           refreshControl={<RefreshControl refreshing={file.refreshing} onRefresh={file.refresh} />}>
           {doc.role === 'index' && (
@@ -84,6 +87,8 @@ function NoteScreen({ path }: { path: string }) {
           <MarkdownView
             content={doc.content}
             path={doc.path}
+            anchor={params.heading}
+            onAnchor={(y) => scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: true })}
             onToggleTask={
               doc.role === 'index' || !canWrite(doc.access)
                 ? undefined

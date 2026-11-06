@@ -61,6 +61,12 @@ export interface Project {
   checklist: ChecklistProgress | null;
 }
 
+/** Where to fetch an attachment's bytes, with the headers the request needs. */
+export interface AttachmentSource {
+  uri: string;
+  headers: Record<string, string>;
+}
+
 export interface FolderEntry {
   kind: 'folder';
   path: string;
