@@ -15,9 +15,13 @@ import { resetUploads } from '@/data/uploads';
 import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
 import { loadAppearance } from '@/theme/appearance';
+import { loadSortOrder } from '@/theme/sort-order';
+import { loadTextScale } from '@/theme/text-size';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 loadAppearance();
+loadTextScale();
+loadSortOrder();
 loadSession();
 
 export default function RootLayout() {

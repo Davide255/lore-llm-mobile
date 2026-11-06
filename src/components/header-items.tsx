@@ -13,6 +13,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Checkmark state for filter-style menus. */
   selected?: boolean;
+  /** Makes this entry a submenu (iOS) / a second sheet (elsewhere); `onPress` is then unused. */
+  submenu?: MenuItem[];
   onPress: () => void;
 }
 
@@ -25,11 +27,35 @@ export type HeaderItem =
       variant?: 'plain' | 'prominent' | 'done';
       disabled?: boolean;
     }
-  | { kind: 'menu'; label: string; icon: IconName; title?: string; items: MenuItem[] };
+  | { kind: 'menu'; label: string; icon: IconName; title?: string; items: MenuItem[] }
+  /** Splits adjacent iOS buttons into separate glass circles; ignored elsewhere. */
+  | { kind: 'spacer' };
 
 const isIOS = Platform.OS === 'ios';
 
+function renderMenuItem(a: MenuItem) {
+  if (a.submenu) {
+    return (
+      <Stack.Toolbar.Menu key={a.label} icon={a.icon ? sf(a.icon) : undefined} title={a.label}>
+        {a.submenu.map(renderMenuItem)}
+      </Stack.Toolbar.Menu>
+    );
+  }
+  return (
+    <Stack.Toolbar.MenuAction
+      key={a.label}
+      icon={a.icon ? sf(a.icon) : undefined}
+      destructive={a.destructive}
+      disabled={a.disabled}
+      isOn={a.selected}
+      onPress={a.onPress}>
+      {a.label}
+    </Stack.Toolbar.MenuAction>
+  );
+}
+
 function renderIOS(item: HeaderItem, key: number) {
+  if (item.kind === 'spacer') return <Stack.Toolbar.Spacer key={key} width={8} />;
   if (item.kind === 'button') {
     return (
       <Stack.Toolbar.Button
@@ -46,27 +72,22 @@ function renderIOS(item: HeaderItem, key: number) {
   }
   return (
     <Stack.Toolbar.Menu key={key} icon={sf(item.icon)} title={item.title} accessibilityLabel={item.label}>
-      {item.items.map((a) => (
-        <Stack.Toolbar.MenuAction
-          key={a.label}
-          icon={a.icon ? sf(a.icon) : undefined}
-          destructive={a.destructive}
-          disabled={a.disabled}
-          isOn={a.selected}
-          onPress={a.onPress}>
-          {a.label}
-        </Stack.Toolbar.MenuAction>
-      ))}
+      {item.items.map(renderMenuItem)}
     </Stack.Toolbar.Menu>
   );
 }
 
-function openMenu(item: Extract<HeaderItem, { kind: 'menu' }>) {
+function openMenu(item: { title?: string; items: MenuItem[] }) {
   showActionSheet({
     title: item.title,
     options: item.items
       .filter((a) => !a.disabled)
-      .map((a) => ({ ...a, label: a.selected ? `${a.label}  ✓` : a.label })),
+      .map((a) => ({
+        ...a,
+        label: a.selected ? `${a.label}  ✓` : a.label,
+        // Opened after the first sheet has gone.
+        onPress: a.submenu ? () => setTimeout(() => openMenu({ title: a.label, items: a.submenu! }), 250) : a.onPress,
+      })),
   });
 }
 
@@ -75,6 +96,7 @@ function AndroidRow({ items }: { items: HeaderItem[] }) {
   return (
     <View style={styles.row}>
       {items.map((item, i) => {
+        if (item.kind === 'spacer') return null;
         const onPress = item.kind === 'menu' ? () => openMenu(item) : item.onPress;
         const disabled = item.kind === 'button' && item.disabled;
         if (item.kind === 'button' && !item.icon) {
@@ -139,6 +161,7 @@ export function BottomAction({ item }: { item: HeaderItem }) {
       </Stack.Toolbar>
     );
   }
+  if (item.kind === 'spacer') return null;
   const onPress = item.kind === 'menu' ? () => openMenu(item) : item.onPress;
   return (
     <Pressable

@@ -1,9 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentView } from '@/components/attachment-view';
-import { HeaderItems } from '@/components/header-items';
+import { HeaderItems, type MenuItem } from '@/components/header-items';
+import { confirmDelete, duplicateEntry, shareEntry } from '@/components/entry-actions';
 import { MarkdownView } from '@/components/markdown';
 import { AgentAvatar } from '@/components/identity';
 import { Banner, ErrorState, HeaderTitle, Loading, ProgressBar, Screen } from '@/components/ui';
@@ -15,6 +16,7 @@ import { pathParam, routes } from '@/lib/routes';
 import { canWrite } from '@/lib/teams';
 import { isAttachment } from '@/lib/upload-plan';
 import { useTheme } from '@/theme';
+import { setTextScale, TEXT_SIZE_PRESETS, useTextScale } from '@/theme/text-size';
 
 /** An uploaded image or PDF has its own view; everything else is a note. */
 export default function FileScreen() {
@@ -29,6 +31,7 @@ function NoteScreen({ path }: { path: string }) {
   const scroll = useRef<ScrollView>(null);
   const file = useFile(path);
   const doc = file.data;
+  const textScale = useTextScale();
 
   useEffect(() => {
     actions.markOpened(path).catch(() => {});
@@ -47,12 +50,15 @@ function NoteScreen({ path }: { path: string }) {
   return (
     <>
       <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={name} subtitle={subtitle} /> }} />
-      {doc?.role === 'index' ? (
+      {doc ? (
         <HeaderItems
-          right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => Share.share({ title: name, message: doc.content }) }]}
+          right={[
+            ...(doc.role !== 'index' && canWrite(doc.access)
+              ? [{ kind: 'button' as const, label: 'Modifica', icon: 'edit' as const, onPress: () => router.push(routes.edit(path)) }, { kind: 'spacer' as const }]
+              : []),
+            { kind: 'menu', label: 'Altro', icon: 'more', items: menuItems(doc, path, name, textScale) },
+          ]}
         />
-      ) : doc && canWrite(doc.access) ? (
-        <HeaderItems right={[{ kind: 'button', label: 'Modifica', onPress: () => router.push(routes.edit(path)) }]} />
       ) : null}
 
       {file.loading ? (
@@ -113,3 +119,30 @@ function NoteScreen({ path }: { path: string }) {
 const styles = StyleSheet.create({
   editedBy: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 14 },
 });
+
+/** Note controls under the "…" button; the index is generated, so it can only be shared and resized. */
+function menuItems(doc: NonNullable<ReturnType<typeof useFile>['data']>, path: string, name: string, textScale: number): MenuItem[] {
+  const items: MenuItem[] = [];
+  const editable = doc.role === 'doc' && canWrite(doc.access);
+  if (editable) {
+    items.push({ label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(path)) });
+    items.push({ label: 'Sposta in…', icon: 'move', onPress: () => router.push(routes.move(path)) });
+    items.push({ label: 'Duplica', icon: 'duplicate', onPress: () => duplicateEntry(path) });
+  }
+  items.push({ label: 'Condividi', icon: 'share', onPress: () => shareEntry(path, name) });
+  if (editable) {
+    items.push({ label: 'Elimina', icon: 'delete', destructive: true, onPress: () => confirmDelete({ path, name, kind: 'file' }, () => router.back()) });
+  }
+  // A native menu cannot hold a slider (that one is in Settings), so the size is a submenu of steps.
+  items.push({
+    label: 'Dimensione del testo',
+    icon: 'heading',
+    onPress: () => {},
+    submenu: TEXT_SIZE_PRESETS.map((v) => ({
+      label: `${Math.round(v * 100)}%${v === 1 ? ' · Predefinita' : ''}`,
+      selected: Math.abs(v - textScale) < 0.03,
+      onPress: () => setTextScale(v),
+    })),
+  });
+  return items;
+}

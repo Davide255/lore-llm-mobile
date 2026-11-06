@@ -10,10 +10,12 @@ import { Banner, EmptyState, ErrorState, IconWell, Loading, Screen, Section } fr
 import { useFolder, useProject } from '@/data/hooks';
 import { uploadFilesInto, uploadFolderInto, useUploads } from '@/data/uploads';
 import { relativeTime } from '@/lib/format';
+import { SORT_OPTIONS, sortEntries } from '@/lib/sort';
 import { projectLabel, projectOf, teamOf } from '@/lib/paths';
 import { pathParam, routes } from '@/lib/routes';
 import { ROLE_LABEL, canWrite } from '@/lib/teams';
 import { useTheme } from '@/theme';
+import { setSortOrder, useSortOrder } from '@/theme/sort-order';
 
 /** A2 — Project / folder contents. */
 export default function FolderScreen() {
@@ -28,6 +30,7 @@ export default function FolderScreen() {
   const writable = !!data && canWrite(data.access);
   const readOnly = !!data && !writable;
   const uploads = useUploads(path);
+  const sortOrder = useSortOrder();
 
   const create: MenuItem[] = [
     { label: 'Nuovo file .md', icon: 'noteAdd', onPress: () => router.push(routes.newFile(path, 'file')) },
@@ -41,7 +44,14 @@ export default function FolderScreen() {
           { label: 'Carica cartella…', icon: 'uploadFolder' as const, onPress: () => uploadFolderInto(path) },
         ]),
   ];
+  const sort: MenuItem = {
+    label: 'Ordina',
+    icon: 'sort',
+    onPress: () => {},
+    submenu: SORT_OPTIONS.map((o) => ({ label: o.label, selected: o.value === sortOrder, onPress: () => setSortOrder(o.value) })),
+  };
   const more: MenuItem[] = [
+    sort,
     { label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(path, true)) },
     ...(isRoot ? [] : [{ label: 'Sposta in…', icon: 'move' as const, onPress: () => router.push(routes.move(path, true)) }]),
     ...(isRoot && !teamOf(path)
@@ -64,7 +74,7 @@ export default function FolderScreen() {
   return (
     <>
       <Stack.Screen options={{ title: name }} />
-      <HeaderItems right={writable ? [{ kind: 'menu', label: 'Altro', icon: 'more', items: more }] : []} />
+      <HeaderItems right={[{ kind: 'menu', label: 'Altro', icon: 'more', items: writable ? more : [sort] }]} />
       {folder.loading ? (
         <Loading />
       ) : folder.error || !data ? (
@@ -104,7 +114,7 @@ export default function FolderScreen() {
             {uploads.filter((u) => u.kind === 'folder').map((u) => (
               <UploadRow key={u.id} item={u} />
             ))}
-            {data.folders.map((f) => (
+            {sortEntries(data.folders, sortOrder).map((f) => (
               <EntryRow key={f.path} entry={f} />
             ))}
           </Section>
@@ -113,7 +123,7 @@ export default function FolderScreen() {
             {uploads.filter((u) => u.kind === 'file').map((u) => (
               <UploadRow key={u.id} item={u} />
             ))}
-            {data.files.map((f) => (
+            {sortEntries(data.files, sortOrder).map((f) => (
               <EntryRow key={f.path} entry={f} />
             ))}
           </Section>

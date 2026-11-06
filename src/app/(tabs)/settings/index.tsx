@@ -8,6 +8,7 @@ import { authUser, providerLabels, signOut } from '@/auth/session';
 import { AGENT_KINDS, AgentAvatar, initialsOf } from '@/components/identity';
 import { PendingInvites } from '@/components/invites';
 import { McpLinkSection } from '@/components/mcp-link';
+import { TextSizeSlider } from '@/components/text-size-slider';
 import { Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary, useTeams } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
@@ -193,6 +194,8 @@ export default function SettingsScreen() {
           appearance={t.scheme}
           tintColor={t.accent}
         />
+        <SectionHeader>Dimensione del testo</SectionHeader>
+        <TextSizeSlider />
       </Screen>
     </>
   );

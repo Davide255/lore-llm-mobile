@@ -14,6 +14,7 @@ import { routes } from '@/lib/routes';
 import { AttachmentImage, PdfCard } from './attachment';
 import { showToast } from './toast';
 import { fonts, useTheme, type Theme } from '@/theme';
+import { useTextScale } from '@/theme/text-size';
 
 function openLink(fromFile: string, href: string) {
   const target = resolveLink(fromFile, href);
@@ -69,6 +70,7 @@ export function InlineText({
   color: ColorValue;
 }) {
   const files = useContext(ProjectFiles);
+  const scale = useTextScale();
   const render = (nodes: Inline[]): ReactNode =>
     nodes.map((n, i) => {
       switch (n.type) {
@@ -94,7 +96,7 @@ export function InlineText({
           );
         case 'code':
           return (
-            <Text key={i} style={{ fontFamily: fonts.mono, color: t.text, fontSize: 13.5 }}>
+            <Text key={i} style={{ fontFamily: fonts.mono, color: t.text, fontSize: 13.5 * scale }}>
               {n.text}
             </Text>
           );
@@ -223,6 +225,8 @@ function BlockContent({
   t: Theme;
   onToggleTask?: (line: number) => void;
 }) {
+  const styles = useMdStyles();
+  const scale = useTextScale();
   /** Text of a block: its line height grows to fit inline math. */
   const prose = (s: string, fontSize: number, baseLineHeight: number, color: ColorValue, style?: StyleProp<TextStyle>) => {
     const lineHeight = lineHeightWithMath(s, fontSize, baseLineHeight);
@@ -256,7 +260,7 @@ function BlockContent({
                 color={t.text}
                 fallback={
                   <View style={[styles.code, { backgroundColor: t.cell }]}>
-                    <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, lineHeight: 19.5, color: t.textSecondary }}>{p.text}</Text>
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 11.5 * scale, lineHeight: 19.5 * scale, color: t.textSecondary }}>{p.text}</Text>
                   </View>
                 }
               />
@@ -299,12 +303,12 @@ function BlockContent({
     }
     case 'quote':
       return (
-        <View style={[styles.quote, { backgroundColor: t.cell, borderLeftColor: t.accent }]}>{prose(b.text, 13.5, 21, t.textSecondary)}</View>
+        <View style={[styles.quote, { backgroundColor: t.cell, borderLeftColor: t.accent }]}>{prose(b.text, 13.5 * scale, 21 * scale, t.textSecondary)}</View>
       );
     case 'code': {
       const code = (
         <View style={[styles.code, { backgroundColor: t.cell }]}>
-          <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, lineHeight: 19.5, color: t.textSecondary }}>{b.text}</Text>
+          <Text style={{ fontFamily: fonts.mono, fontSize: 11.5 * scale, lineHeight: 19.5 * scale, color: t.textSecondary }}>{b.text}</Text>
         </View>
       );
       return b.lang === 'math' ? <MathBlock tex={b.text} fontSize={styles.p.fontSize} color={t.text} fallback={code} /> : code;
@@ -328,6 +332,7 @@ function embedsOnly(source: string): Embed[] | null {
 /** `![[image.png]]` shows the image, `![[doc.pdf]]` a card that opens it; anything else stays a link. */
 function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: Theme }) {
   const files = useContext(ProjectFiles);
+  const styles = useMdStyles();
   return (
     <View>
       {embeds.map((e, i) => {
@@ -353,6 +358,7 @@ function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: The
  * never wrap (the table scrolls horizontally instead), which keeps rows aligned.
  */
 function TableView({ source, path, t }: { source: string; path: string; t: Theme }) {
+  const styles = useMdStyles();
   const { header, align, rows } = useMemo(() => parseTable(source), [source]);
   return (
     <ScrollView
@@ -391,7 +397,7 @@ function TableView({ source, path, t }: { source: string; path: string; t: Theme
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   h1: { fontSize: 23, lineHeight: 28, fontWeight: '700', letterSpacing: -0.7, marginTop: 8, marginBottom: 10 },
   h2: { fontSize: 16, lineHeight: 21, fontWeight: '600', letterSpacing: -0.3, marginTop: 19, marginBottom: 8 },
   h3: { fontSize: 14.5, lineHeight: 20, fontWeight: '600', marginTop: 14, marginBottom: 6 },
@@ -418,3 +424,22 @@ const styles = StyleSheet.create({
   td: { height: 37, justifyContent: 'center', paddingHorizontal: 12 },
   cellText: { fontSize: 13.5, lineHeight: 20 },
 });
+
+/** The block styles with every font size and line height multiplied by the reading size. */
+function useMdStyles(): typeof baseStyles {
+  const scale = useTextScale();
+  return useMemo(() => {
+    if (scale === 1) return baseStyles;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(baseStyles)) {
+      const st = v as TextStyle;
+      out[k] = {
+        ...st,
+        ...(st.fontSize ? { fontSize: st.fontSize * scale } : null),
+        ...(st.lineHeight ? { lineHeight: st.lineHeight * scale } : null),
+        ...(typeof st.height === 'number' ? { height: st.height * scale } : null),
+      };
+    }
+    return out as typeof baseStyles;
+  }, [scale]);
+}
