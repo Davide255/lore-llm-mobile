@@ -10,10 +10,11 @@ import {
   type FileDocument,
   type InviteRole,
   type Project,
+  type Star,
   type TeamRole,
 } from '@/api';
 import { toggleTaskAtLine } from '@/lib/markdown';
-import { invalidate, setQueryData, useQuery } from './store';
+import { getQueryData, invalidate, setQueryData, useQuery } from './store';
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export const useProjectFiles = (project: string | null) =>
   useQuery(project ? `files:${project}` : null, () => kb.listFiles(project!));
 export const useFile = (path: string) => useQuery(`file:${path}`, () => kb.getFile(path));
 export const useRecentFiles = (limit = 5) => useQuery(`recent-files:${limit}`, () => kb.listRecentFiles(limit));
+/** Starred notes and projects, newest first. */
+export const useStars = () => useQuery('stars', () => kb.listStars());
 export const useRecentSearches = () => useQuery('recent-searches', () => kb.listRecentSearches());
 export const useSearch = (query: string, project: string | null) =>
   useQuery(query.trim() ? `search:${project ?? '*'}:${query.trim().toLowerCase()}` : null, () =>
@@ -81,6 +84,24 @@ export const actions = {
   duplicate: (path: string) => mutate(() => kb.duplicate(path)),
   remove: (path: string) => mutate(() => kb.remove(path)),
   undoRemove: (token: string) => mutate(() => kb.undoRemove(token)),
+
+  /** Stars or unstars a note (`Project/note.md`) or a project (`Project`): shown at once, undone if the server refuses. */
+  async setStar(path: string, starred: boolean) {
+    const without = (prev: Star[] | undefined) => (prev ?? []).filter((s) => s.path !== path);
+    setQueryData<Star[]>('stars', (prev) =>
+      starred ? [{ path, kind: path.includes('/') ? 'note' : 'project', starredAt: new Date().toISOString() }, ...without(prev)] : without(prev),
+    );
+    try {
+      await kb.setStar(path, starred);
+    } catch (e) {
+      invalidate((k) => k === 'stars');
+      throw e;
+    }
+  },
+  toggleStar(path: string) {
+    const on = (getQueryData<Star[]>('stars') ?? []).some((s) => s.path === path);
+    return actions.setStar(path, !on);
+  },
 
   markOpened: (path: string) => kb.markOpened(path).then(() => invalidate((k) => k.startsWith('recent-files'))),
   addRecentSearch: (q: string) => kb.addRecentSearch(q).then(() => invalidate((k) => k === 'recent-searches')),

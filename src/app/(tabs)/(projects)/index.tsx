@@ -1,16 +1,16 @@
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, Text, View } from 'react-native';
+import { Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { Project } from '@/api';
 import { EntryRow } from '@/components/entry-row';
 import { HeaderItems } from '@/components/header-items';
 import { PendingInvites } from '@/components/invites';
-import { projectIcons } from '@/components/icon';
+import { Icon, projectIcons } from '@/components/icon';
 import { Cell, EmptyState, ErrorState, IconWell, Loading, Pill, ProgressBar, Screen, Section } from '@/components/ui';
-import { useMyInvites, useProjects, useRecentFiles, useSummary } from '@/data/hooks';
+import { actions, attempt, useMyInvites, useProjects, useRecentFiles, useStars, useSummary } from '@/data/hooks';
 import { plural, relativeTime } from '@/lib/format';
-import { projectLabel } from '@/lib/paths';
+import { basename, projectLabel } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { useTheme, type Theme } from '@/theme';
 
@@ -21,6 +21,19 @@ function wellColors(p: Project, t: Theme) {
   return {};
 }
 
+function StarButton({ path, label, starred }: { path: string; label: string; starred: boolean }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={() => attempt(() => actions.setStar(path, !starred), 'Impossibile aggiornare i preferiti')}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={starred ? `Rimuovi ${label} dai preferiti` : `Aggiungi ${label} ai preferiti`}>
+      <Icon name={starred ? 'starFill' : 'star'} size={18} color={starred ? t.warning : t.textMuted} />
+    </Pressable>
+  );
+}
+
 /** A1 — Projects. */
 export default function ProjectsScreen() {
   const t = useTheme();
@@ -28,9 +41,39 @@ export default function ProjectsScreen() {
   const summary = useSummary();
   const recent = useRecentFiles(3);
   const invites = useMyInvites();
+  const stars = useStars();
   const [filter, setFilter] = useState('');
 
+  const starredProjects = new Set((stars.data ?? []).filter((s) => s.kind === 'project').map((s) => s.path));
   const visible = (projects.data ?? []).filter((p) => p.title.toLowerCase().includes(filter.trim().toLowerCase()));
+  const favorites = visible.filter((p) => starredProjects.has(p.name));
+  const others = visible.filter((p) => !starredProjects.has(p.name));
+  // Starred notes of projects the user can no longer see are left out.
+  const known = new Set((projects.data ?? []).map((p) => p.name));
+  const starredNotes = (stars.data ?? []).filter((s) => s.kind === 'note' && known.has(s.path.split('/')[0]!) && !filter);
+
+  const projectRow = (p: Project, starred: boolean) => (
+    <EntryRow
+      key={p.name}
+      entry={{ kind: 'folder', path: p.name, name: p.title, access: p.access, fileCount: p.fileCount, folderCount: 0, updatedAt: p.updatedAt }}
+      icon={<IconWell name={projectIcons[p.icon]} {...wellColors(p, t)} />}
+      subtitle={`${p.fileCount} file · ${relativeTime(p.updatedAt)}`}
+      right={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {p.team && <Pill>{p.team.name}</Pill>}
+          <StarButton path={p.name} label={p.title} starred={starred} />
+        </View>
+      }>
+      {p.checklist && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <ProgressBar value={p.checklist.done / p.checklist.total} style={{ flex: 1 }} />
+          <Text style={{ fontSize: 10.5, fontWeight: '600', color: t.textMuted }}>
+            {p.checklist.done}/{p.checklist.total}
+          </Text>
+        </View>
+      )}
+    </EntryRow>
+  );
 
   return (
     <>
@@ -54,28 +97,36 @@ export default function ProjectsScreen() {
               message={filter ? undefined : 'Crea il primo progetto con il pulsante +.'}
             />
           ) : (
-            <Section
-              header={
-                summary.data && !filter
-                  ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
-                  : `${plural(visible.length, 'progetto', 'progetti')}`
-              }>
-              {visible.map((p) => (
-                <EntryRow
-                  key={p.name}
-                  entry={{ kind: 'folder', path: p.name, name: p.title, access: p.access, fileCount: p.fileCount, folderCount: 0, updatedAt: p.updatedAt }}
-                  icon={<IconWell name={projectIcons[p.icon]} {...wellColors(p, t)} />}
-                  subtitle={`${p.fileCount} file · ${relativeTime(p.updatedAt)}`}
-                  right={p.team ? <Pill>{p.team.name}</Pill> : undefined}>
-                  {p.checklist && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <ProgressBar value={p.checklist.done / p.checklist.total} style={{ flex: 1 }} />
-                      <Text style={{ fontSize: 10.5, fontWeight: '600', color: t.textMuted }}>
-                        {p.checklist.done}/{p.checklist.total}
-                      </Text>
-                    </View>
-                  )}
-                </EntryRow>
+            <>
+              {favorites.length > 0 && <Section header="Preferiti">{favorites.map((p) => projectRow(p, true))}</Section>}
+              {others.length > 0 && (
+                <Section
+                  header={
+                    favorites.length > 0
+                      ? 'Progetti'
+                      : summary.data && !filter
+                        ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
+                        : `${plural(visible.length, 'progetto', 'progetti')}`
+                  }>
+                  {others.map((p) => projectRow(p, false))}
+                </Section>
+              )}
+            </>
+          )}
+
+          {starredNotes.length > 0 && (
+            <Section header="Note preferite">
+              {starredNotes.map((n) => (
+                <Cell
+                  key={n.path}
+                  icon={<IconWell name="doc" />}
+                  title={basename(n.path)}
+                  mono
+                  subtitle={projectLabel(n.path)}
+                  chevron
+                  onPress={() => router.push(routes.file(n.path))}
+                  right={<StarButton path={n.path} label={basename(n.path)} starred />}
+                />
               ))}
             </Section>
           )}

@@ -13,6 +13,7 @@ import { fileSize, plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
 import { attachmentKind, isAttachment } from '@/lib/upload-plan';
 import { canWrite } from '@/lib/teams';
+import { useStars } from '@/data/hooks';
 import { useTheme } from '@/theme';
 
 function attachmentIcon(name: string): IconName {
@@ -52,7 +53,8 @@ export function EntryRow({
   const isFile = entry.kind === 'file';
   const special = isFile && entry.role !== 'doc';
   const href = routes.entry(entry.path, entry.kind);
-  const menu = entryMenu(entry);
+  const stars = useStars();
+  const menu = entryMenu(entry, !!stars.data?.some((s) => s.path === entry.path));
 
   const defaultIcon =
     entry.kind === 'folder' ? (

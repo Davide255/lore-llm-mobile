@@ -4,11 +4,11 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 
 import { AttachmentView } from '@/components/attachment-view';
 import { HeaderItems, type MenuItem } from '@/components/header-items';
-import { confirmDelete, duplicateEntry, shareEntry } from '@/components/entry-actions';
+import { confirmDelete, duplicateEntry, shareEntry, starItem } from '@/components/entry-actions';
 import { MarkdownView } from '@/components/markdown';
 import { AgentAvatar } from '@/components/identity';
 import { Banner, ErrorState, HeaderTitle, Loading, ProgressBar, Screen } from '@/components/ui';
-import { actions, attempt, useFile } from '@/data/hooks';
+import { actions, attempt, useFile, useStars } from '@/data/hooks';
 import { fileSize, relativeTime, thousands } from '@/lib/format';
 import { checklistProgress } from '@/lib/markdown';
 import { projectLabel } from '@/lib/paths';
@@ -32,6 +32,7 @@ function NoteScreen({ path }: { path: string }) {
   const file = useFile(path);
   const doc = file.data;
   const textScale = useTextScale();
+  const starred = !!useStars().data?.some((s) => s.path === path);
 
   useEffect(() => {
     actions.markOpened(path).catch(() => {});
@@ -56,7 +57,7 @@ function NoteScreen({ path }: { path: string }) {
             ...(doc.role !== 'index' && canWrite(doc.access)
               ? [{ kind: 'button' as const, label: 'Modifica', icon: 'edit' as const, onPress: () => router.push(routes.edit(path)) }, { kind: 'spacer' as const }]
               : []),
-            { kind: 'menu', label: 'Altro', icon: 'more', items: menuItems(doc, path, name, textScale) },
+            { kind: 'menu', label: 'Altro', icon: 'more', items: menuItems(doc, path, name, textScale, starred) },
           ]}
         />
       ) : null}
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
 });
 
 /** Note controls under the "…" button; the index is generated, so it can only be shared and resized. */
-function menuItems(doc: NonNullable<ReturnType<typeof useFile>['data']>, path: string, name: string, textScale: number): MenuItem[] {
+function menuItems(doc: NonNullable<ReturnType<typeof useFile>['data']>, path: string, name: string, textScale: number, starred: boolean): MenuItem[] {
   const items: MenuItem[] = [];
   const editable = doc.role === 'doc' && canWrite(doc.access);
   if (editable) {
@@ -129,6 +130,7 @@ function menuItems(doc: NonNullable<ReturnType<typeof useFile>['data']>, path: s
     items.push({ label: 'Sposta in…', icon: 'move', onPress: () => router.push(routes.move(path)) });
     items.push({ label: 'Duplica', icon: 'duplicate', onPress: () => duplicateEntry(path) });
   }
+  if (doc.role !== 'index') items.push(starItem(path, starred));
   items.push({ label: 'Condividi', icon: 'share', onPress: () => shareEntry(path, name) });
   if (editable) {
     items.push({ label: 'Elimina', icon: 'delete', destructive: true, onPress: () => confirmDelete({ path, name, kind: 'file' }, () => router.back()) });

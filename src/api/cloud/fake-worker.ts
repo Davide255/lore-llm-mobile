@@ -23,6 +23,7 @@ export function createFakeWorker() {
   const versions = new Map<string, number>([['', 1]]);
   const teams = new Map<string, { name: string; role: TeamRole }>();
   const log: string[] = [];
+  const stars = new Map<string, string>();
   let clock = 0;
   let accountBlocked = false;
 
@@ -77,6 +78,40 @@ export function createFakeWorker() {
     }
     if (route === 'GET /v1/audit') return ok({ items: [], next_before: null });
     if (route === 'GET /v1/agents') return ok({ agents: [] });
+    if (url.pathname === '/v1/stars') {
+      if (!role) return ok({ error: 'Forbidden' }, 403);
+      if (method === 'GET') {
+        const rows = [...stars].map(([key, at]) => {
+          const [o, path] = key.split('\0');
+          return { owner: o, path, kind: path.includes('/') ? 'note' : 'project', starred_at: at };
+        });
+        return ok({ stars: rows.sort((a, b) => b.starred_at.localeCompare(a.starred_at)) });
+      }
+      const path = q.get('path') ?? '';
+      const exists = path.includes('/') ? space(owner).has(path) : [...space(owner).keys()].some((p) => p.startsWith(`${path}/`));
+      if (method === 'PUT') {
+        if (!exists) return ok({ error: 'Not found' }, 404);
+        stars.set(`${owner}\0${path}`, new Date(Date.UTC(2026, 0, 1, 0, 0, ++clock)).toISOString());
+      } else stars.delete(`${owner}\0${path}`);
+      return ok({ ok: true });
+    }
+    if (route === 'GET /v1/search') {
+      if (!role) return ok({ error: 'Forbidden' }, 403);
+      // Every term must start a word of the note (AND, prefix), like the real index.
+      const terms = (q.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+      const hits = [...space(owner)]
+        .filter(([path]) => (!q.get('project') || path.split('/')[0] === q.get('project')) && !path.endsWith('/index.md'))
+        .flatMap(([path, f]) => {
+          const text = `${path}\n${f.content}`.toLowerCase();
+          if (!terms.every((t) => new RegExp(`(^|[^a-z0-9])${t}`).test(text))) return [];
+          const snippets = f.content
+            .split('\n')
+            .map((text, i) => ({ line: i + 1, text }))
+            .filter((l) => terms.some((t) => l.text.toLowerCase().includes(t)));
+          return [{ path, score: 1, pathMatch: terms.every((t) => path.toLowerCase().includes(t)), snippets }];
+        });
+      return ok({ hits, scanned: hits.length, truncated: false });
+    }
     if (route === 'GET /v1/teams') {
       return ok({ teams: [...teams].map(([id, t]) => ({ id, name: t.name, role: t.role, created_by: 'x', created_at: '2026-01-01T00:00:00.000Z' })) });
     }

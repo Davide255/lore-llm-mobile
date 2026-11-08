@@ -17,6 +17,7 @@ import type {
   Project,
   RecentFile,
   SearchResponse,
+  Star,
   Team,
   TeamInvite,
   TeamMember,
@@ -81,6 +82,10 @@ export interface KnowledgeBaseClient {
   listRecentSearches(): Promise<string[]>;
   addRecentSearch(query: string): Promise<void>;
   removeRecentSearch(query: string): Promise<void>;
+
+  // Stars (notes and projects; private, kept on the server so every device sees them)
+  listStars(): Promise<Star[]>;
+  setStar(path: string, starred: boolean): Promise<void>;
 
   // Agents (permissions live on the server; tokens are shown once)
   listAgents(): Promise<Agent[]>;

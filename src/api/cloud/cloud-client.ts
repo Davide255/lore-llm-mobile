@@ -26,6 +26,7 @@ import {
   type ProjectIcon,
   type SearchHit,
   type SearchResponse,
+  type Star,
   type Team,
   type TeamInvite,
   type TeamMember,
@@ -45,7 +46,7 @@ import {
 import { deviceFiles, type LocalFiles } from './local-file';
 import { idToken } from '@/auth/session';
 import { diffLines, diffStats } from '@/lib/diff';
-import { checklistProgress, parse, plainText } from '@/lib/markdown';
+import { checklistProgress } from '@/lib/markdown';
 import {
   CHECKLIST_FILE,
   basename,
@@ -110,6 +111,22 @@ interface ProjectSummary {
 }
 
 /** Team rows as the Worker sends them. */
+/** A hit from GET /v1/search: wire path (no team suffix) and up to a few matching lines. */
+interface ServerSearchHit {
+  path: string;
+  score: number;
+  pathMatch: boolean;
+  snippets: { line: number; text: string }[];
+}
+
+/** A row of GET /v1/stars: `owner` is `t:<teamId>` for a team, empty for the user's own space. */
+interface ServerStar {
+  owner: string | null;
+  path: string;
+  kind: 'note' | 'project';
+  starred_at: string;
+}
+
 interface TeamRow {
   id: string;
   name: string;
@@ -1063,42 +1080,64 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async search(query: string, project?: string | null): Promise<SearchResponse> {
     await this.ready();
-    // Search reads the mirrored text, so it is the one place that opens every project (or just the one asked for).
-    for (const name of project ? [project] : this.projectNames()) await this.loadProject(name);
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return { query, totalMatches: 0, hits: [], byProject: [] };
-    const count = (text: string) => {
-      const lower = text.toLowerCase();
-      let n = 0;
-      for (let i = lower.indexOf(q); i !== -1; i = lower.indexOf(q, i + q.length)) n++;
-      return n;
-    };
-    const all: (SearchHit & { matches: number; updatedAt: string })[] = [];
-    for (const [path, { content }] of this.cache) {
-      const lines = parse(content).flatMap((b) => ('text' in b ? (b.type === 'code' ? b.text.split('\n') : [plainText(b.text)]) : []));
-      const matches = lines.reduce((n, l) => n + count(l), 0);
-      if (!matches) continue;
-      const snippet = makeSnippet(lines.find((l) => count(l) > 0)!, q);
-      all.push({
-        path,
-        name: basename(path),
-        project: projectOf(path),
-        role: roleOf(path),
-        snippet,
-        extraMatches: matches - snippet.highlights.length,
-        matches,
-        updatedAt: this.files.get(path)?.uploaded ?? '',
-      });
-    }
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    // The server indexes one space (the user's own, or a team's) at a time: ask each, then merge.
+    // Always unfiltered, so the per-project counts stay complete; the project filter is applied here.
+    const spaces: (string | null)[] = [null, ...this.teams.map((t) => t.id)];
+    const settled = await Promise.allSettled(
+      spaces.map((teamId) =>
+        this.request<{ hits: ServerSearchHit[]; truncated?: boolean }>('GET', '/v1/search', {
+          query: { q, limit: 100, ...(teamId ? { owner: `t:${teamId}` } : {}) },
+        }).then((r) => ({ teamId, ...r })),
+      ),
+    );
+    const done = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    // A team the user just left may refuse; fail only when no space answered.
+    if (!done.length) throw (settled[0] as PromiseRejectedResult).reason;
+
+    const all: SearchHit[] = done.flatMap(({ teamId, hits }) =>
+      hits.map((h) => {
+        const path = fromWire(teamId, h.path);
+        const first = h.snippets[0]?.text ?? basename(path);
+        return {
+          path,
+          name: basename(path),
+          project: projectOf(path),
+          role: roleOf(path),
+          snippet: makeSnippet(first, terms),
+          extraMatches: Math.max(0, h.snippets.length - 1),
+        };
+      }),
+    );
     const byProject = new Map<string, number>();
-    all.forEach((h) => byProject.set(h.project, (byProject.get(h.project) ?? 0) + h.matches));
-    const hits = all.filter((h) => !project || h.project === project).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    all.forEach((h) => byProject.set(h.project, (byProject.get(h.project) ?? 0) + 1));
+    const hits = project ? all.filter((h) => h.project === project) : all;
     return {
       query,
-      totalMatches: hits.reduce((n, h) => n + h.matches, 0),
-      hits: hits.map(({ matches: _m, updatedAt: _u, ...h }) => h),
+      totalMatches: hits.reduce((n, h) => n + 1 + h.extraMatches, 0),
+      hits,
       byProject: [...byProject.entries()].map(([p, matches]) => ({ project: p, matches })).sort((a, b) => b.matches - a.matches),
+      truncated: done.some((d) => d.truncated),
     };
+  }
+
+  // ─── stars ────────────────────────────────────────────────────────────────
+
+  async listStars(): Promise<Star[]> {
+    await this.ready();
+    const { stars } = await this.request<{ stars: ServerStar[] }>('GET', '/v1/stars');
+    return stars.map((s) => ({
+      path: fromWire(s.owner?.startsWith('t:') ? s.owner.slice(2) : null, s.path),
+      kind: s.kind,
+      starredAt: s.starred_at,
+    }));
+  }
+
+  async setStar(path: string, starred: boolean): Promise<void> {
+    await this.ready();
+    await this.fileRequest(starred ? 'PUT' : 'DELETE', '/v1/stars', path);
   }
 
   async listRecentSearches() {
@@ -1360,10 +1399,11 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 }
 
-function makeSnippet(line: string, q: string) {
+/** The server's snippet cut around the first term, with every term occurrence (prefixes included) highlighted. */
+export function makeSnippet(line: string, terms: string[]) {
   const lower = line.toLowerCase();
-  const first = lower.indexOf(q);
-  const start = Math.max(0, first - 24);
+  const first = Math.min(...terms.map((t) => lower.indexOf(t)).filter((i) => i >= 0), line.length);
+  const start = first === line.length ? 0 : Math.max(0, first - 24);
   const end = Math.min(line.length, start + 96);
   let text = line.slice(start, end);
   let offset = start;
@@ -1373,10 +1413,18 @@ function makeSnippet(line: string, q: string) {
   }
   if (end < line.length) text += '…';
   const highlights: [number, number][] = [];
-  let i = lower.indexOf(q, start);
-  while (i !== -1 && i + q.length <= end) {
-    highlights.push([i - offset, i - offset + q.length]);
-    i = lower.indexOf(q, i + q.length);
+  for (const t of terms) {
+    for (let i = lower.indexOf(t, start); i !== -1 && i + t.length <= end; i = lower.indexOf(t, i + t.length)) {
+      highlights.push([i - offset, i - offset + t.length]);
+    }
   }
-  return { text, highlights };
+  highlights.sort((x, y) => x[0] - y[0]);
+  // Overlapping terms (a prefix of another) merge into one range.
+  const merged: [number, number][] = [];
+  for (const h of highlights) {
+    const last = merged[merged.length - 1];
+    if (last && h[0] <= last[1]) last[1] = Math.max(last[1], h[1]);
+    else merged.push([...h]);
+  }
+  return { text, highlights: merged };
 }

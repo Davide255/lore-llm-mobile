@@ -166,6 +166,18 @@ export interface SearchResponse {
   hits: SearchHit[];
   /** Match counts per project, ignoring the project filter. */
   byProject: { project: string; matches: number }[];
+  /** The server has not finished indexing a large space: searching again completes the results. */
+  truncated?: boolean;
+}
+
+// ─── Stars ───────────────────────────────────────────────────────────────────
+
+/** A starred note or whole project (private to the user). Paths are client paths (team projects keyed `Name@teamId`). */
+export interface Star {
+  /** `Project/note.md` for a note, `Project` for a project. */
+  path: string;
+  kind: 'note' | 'project';
+  starredAt: ISODate;
 }
 
 // ─── Agents & activity ───────────────────────────────────────────────────────

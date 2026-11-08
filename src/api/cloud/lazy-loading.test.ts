@@ -93,9 +93,11 @@ describe('cloud client loading flow', () => {
     take();
   });
 
-  it('search is what opens the remaining projects', async () => {
+  it('search is done by the server and opens no project', async () => {
     const found = await kb.search('needle');
-    assert.ok(take().includes('GET /v1/files?project=Beta&attachments=1'));
+    const calls = take();
+    assert.ok(calls.some((l) => l.startsWith('GET /v1/search')));
+    assert.ok(!calls.some((l) => l.startsWith('GET /v1/files')));
     assert.deepEqual(found.hits.map((h) => h.path), ['Alpha/b.md']);
   });
 

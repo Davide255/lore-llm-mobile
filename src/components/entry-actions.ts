@@ -90,8 +90,17 @@ export async function chooseTeamForProject(project: string, onMoved?: (newKey: s
   });
 }
 
+/** Star or unstar a note; a failure is shown as an alert. */
+export function starItem(path: string, starred: boolean): MenuItem {
+  return {
+    label: starred ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti',
+    icon: starred ? 'starFill' : 'star',
+    onPress: () => void attempt(() => actions.setStar(path, !starred), 'Impossibile aggiornare i preferiti'),
+  };
+}
+
 /** Actions for the long-press menu (E2). `role` gates what special files allow; viewers only read. */
-export function entryMenu(entry: Entry): MenuItem[] {
+export function entryMenu(entry: Entry, starred = false): MenuItem[] {
   const isFile = entry.kind === 'file';
   const special = isFile && entry.role !== 'doc';
   const attachment = isFile && isAttachment(entry.name);
@@ -106,6 +115,7 @@ export function entryMenu(entry: Entry): MenuItem[] {
     }
   }
   if (isFile && !special && !attachment && !readOnly) items.push({ label: 'Duplica', icon: 'duplicate', onPress: () => duplicateEntry(entry.path) });
+  if (isFile && !attachment && entry.role !== 'index') items.push(starItem(entry.path, starred));
   if (isFile && !attachment) items.push({ label: 'Condividi', icon: 'share', onPress: () => shareEntry(entry.path, entry.name) });
   if (!readOnly && !(isFile && entry.role === 'index')) {
     items.push({

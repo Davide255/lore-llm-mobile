@@ -21,6 +21,8 @@ export const icons = {
   addCircle: { sf: 'plus.circle', md: 'add_circle' },
   more: { sf: 'ellipsis', md: 'more_horiz' },
   sort: { sf: 'arrow.up.arrow.down', md: 'sort' },
+  star: { sf: 'star', md: 'star' },
+  starFill: { sf: 'star.fill', md: 'star' },
   share: { sf: 'square.and.arrow.up', md: 'ios_share' },
   search: { sf: 'magnifyingglass', md: 'search' },
   history: { sf: 'clock.arrow.circlepath', md: 'history' },

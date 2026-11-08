@@ -82,6 +82,11 @@ export function useQuery<T>(key: string | null, fetcher: () => Promise<T>) {
   };
 }
 
+/** What a query holds right now (undefined before its first load). */
+export function getQueryData<T>(key: string): T | undefined {
+  return cache.get(key)?.data as T | undefined;
+}
+
 /** Mark matching queries stale; mounted ones refetch immediately. */
 export function invalidate(match: (key: string) => boolean = () => true) {
   for (const key of cache.keys()) {

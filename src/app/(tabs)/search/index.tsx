@@ -6,8 +6,9 @@ import type { SearchBarCommands } from 'react-native-screens';
 import type { SearchHit } from '@/api';
 import { Icon } from '@/components/icon';
 import { Cell, EmptyState, IconWell, Pill, Screen, Section, SectionHeader } from '@/components/ui';
-import { actions, useProjects, useRecentFiles, useRecentSearches, useSearch } from '@/data/hooks';
+import { actions, useProjects, useRecentFiles, useRecentSearches, useSearch, useStars } from '@/data/hooks';
 import { plural } from '@/lib/format';
+import { starredFirst } from '@/lib/starred';
 import { projectLabel, teamOf } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { fonts, useTheme, type Theme } from '@/theme';
@@ -32,6 +33,9 @@ export default function SearchScreen() {
   const recentSearches = useRecentSearches();
   const recentFiles = useRecentFiles(4);
   const projects = useProjects();
+  const stars = useStars();
+  const starredPaths = new Set((stars.data ?? []).map((s) => s.path));
+  const isStarred = (name: string) => starredPaths.has(name);
 
   const runRecent = (q: string) => {
     bar.current?.setText(q);
@@ -43,7 +47,10 @@ export default function SearchScreen() {
     router.push(routes.file(hit.path));
   };
 
-  const projectNames = (projects.data ?? []).map((p) => p.name);
+  const projectNames = starredFirst(
+    (projects.data ?? []).map((p) => p.name),
+    isStarred,
+  );
   // A team's project may share its name with a personal one: mark it.
   const pillLabel = (key: string) => `${projectLabel(key)}${teamOf(key) ? ' · team' : ''}`;
   const counts = new Map(results.data?.byProject.map((b) => [b.project, b.matches]));
@@ -54,7 +61,7 @@ export default function SearchScreen() {
       <Pill size="md" active={!project} onPress={() => setProject(null)}>
         {withCounts ? `Tutti · ${total}` : 'Tutti'}
       </Pill>
-      {(withCounts ? [...counts.keys()] : projectNames).map((p) => (
+      {(withCounts ? starredFirst([...counts.keys()], isStarred) : projectNames).map((p) => (
         <Pill key={p} size="md" active={project === p} onPress={() => setProject(project === p ? null : p)}>
           {withCounts ? `${pillLabel(p)} · ${counts.get(p)}` : pillLabel(p)}
         </Pill>
@@ -126,8 +133,9 @@ export default function SearchScreen() {
             ) : results.data ? (
               <Section
                 header={`${plural(results.data.totalMatches, 'risultato', 'risultati')} in ${plural(results.data.hits.length, 'file', 'file')}`}
+                footer={results.data.truncated ? 'Indicizzazione in corso: cerca di nuovo per i risultati completi.' : undefined}
                 inset={13}>
-                {results.data.hits.map((hit) => (
+                {starredFirst(results.data.hits, (h) => isStarred(h.path) || isStarred(h.project)).map((hit) => (
                   <ResultRow key={hit.path} hit={hit} t={t} onPress={() => openHit(hit)} />
                 ))}
               </Section>
