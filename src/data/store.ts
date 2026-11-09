@@ -26,14 +26,25 @@ function set(key: string, next: Partial<Snapshot>) {
   subscribers.get(key)?.forEach((cb) => cb());
 }
 
+/** Keys invalidated while their fetch was already running: that fetch may predate the change, so it runs again. */
+const dirty = new Set<string>();
+
 function load(key: string) {
   const fetcher = fetchers.get(key);
-  if (!fetcher || inflight.has(key)) return;
+  if (!fetcher) return;
+  if (inflight.has(key)) {
+    dirty.add(key);
+    return;
+  }
   set(key, { loading: true });
   const p = fetcher()
-    .then((data) => set(key, { data, error: undefined, loading: false, stale: false }))
-    .catch((error) => set(key, { error, loading: false, stale: false }))
-    .finally(() => inflight.delete(key));
+    // A result that may be out of date stays stale (and keeps `loading`) until the refetch below lands.
+    .then((data) => set(key, dirty.has(key) ? { data, error: undefined } : { data, error: undefined, loading: false, stale: false }))
+    .catch((error) => set(key, dirty.has(key) ? { error } : { error, loading: false, stale: false }))
+    .finally(() => {
+      inflight.delete(key);
+      if (dirty.delete(key)) load(key);
+    });
   inflight.set(key, p);
 }
 

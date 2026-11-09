@@ -24,6 +24,8 @@ export function createFakeWorker() {
   const teams = new Map<string, { name: string; role: TeamRole }>();
   const log: string[] = [];
   const stars = new Map<string, string>();
+  /** Invitations addressed to the user, by invite id. */
+  const invites = new Map<string, { teamId: string; teamName: string; role: TeamRole }>();
   let clock = 0;
   let accountBlocked = false;
 
@@ -116,6 +118,28 @@ export function createFakeWorker() {
       return ok({ teams: [...teams].map(([id, t]) => ({ id, name: t.name, role: t.role, created_by: 'x', created_at: '2026-01-01T00:00:00.000Z' })) });
     }
 
+    if (route === 'GET /v1/invites') {
+      return ok({
+        invites: [...invites].map(([id, i]) => ({
+          id,
+          team_id: i.teamId,
+          team_name: i.teamName,
+          role: i.role,
+          invited_by: { name: 'Ada', email: null },
+          created_at: '2026-01-01T00:00:00.000Z',
+          expires_at: '2026-02-01T00:00:00.000Z',
+        })),
+      });
+    }
+    const answer = /^POST \/v1\/invites\/([^/]+)\/(accept|decline)$/.exec(route);
+    if (answer) {
+      const invite = invites.get(decodeURIComponent(answer[1]!));
+      if (!invite) return ok({ error: 'Not found' }, 404);
+      invites.delete(decodeURIComponent(answer[1]!));
+      if (answer[2] === 'accept') addTeam(invite.teamId, invite.teamName, invite.role);
+      return ok({ ok: true });
+    }
+
     if (route === 'GET /v1/projects') {
       const by = new Map<string, { name: string; file_count: number; size: number; updated_at: string; checklist: unknown }>();
       for (const [path, f] of space(owner)) {
@@ -198,6 +222,8 @@ export function createFakeWorker() {
     fetch: fetch as typeof globalThis.fetch,
     put,
     addTeam,
+    /** Someone invites the user to a team: it is pending until the user answers. */
+    invite: (id: string, teamId: string, teamName: string, role: TeamRole) => invites.set(id, { teamId, teamName, role }),
     setRole: (id: string, role: TeamRole) => teams.set(id, { ...teams.get(id)!, role }),
     /** The user leaves (or is removed from) a team. */
     removeTeam: (id: string) => teams.delete(id),
