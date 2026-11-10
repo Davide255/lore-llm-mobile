@@ -19,6 +19,8 @@ export const brand = {
 const dark = {
   scheme: 'dark' as 'dark' | 'light',
   background: '#121211',
+  /** Tablet sidebar (Lore LLM Desktop's). */
+  sidebar: '#161518',
   cell: '#1c1b20',
   cellRaised: '#232129',
   sheet: '#26252b',
@@ -59,6 +61,7 @@ export type Theme = typeof dark;
 const light: Theme = {
   scheme: 'light',
   background: '#f5f3ee',
+  sidebar: '#ece9e2',
   cell: '#ffffff',
   cellRaised: '#f3eeff',
   sheet: '#ffffff',

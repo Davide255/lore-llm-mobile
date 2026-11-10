@@ -20,11 +20,18 @@
     },
     "ios": {
       "icon": "./assets/lore-llm.icon",
+      "supportsTablet": true,
       "bundleIdentifier": "it.lore.llm",
       "buildNumber": "8",
       "appleTeamId": "ZVCQ7Q6256",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
       }
     },
     "android": {
