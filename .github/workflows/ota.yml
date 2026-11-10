@@ -34,6 +34,8 @@ jobs:
   publish:
     # A runner on our own machine (the update server may block GitHub's hosted runners).
     runs-on: self-hosted
+    # Only the owner may publish (and run anything on the self-hosted runner).
+    if: github.actor == 'Davide255' && github.triggering_actor == 'Davide255'
     timeout-minutes: 20
     env:
       OTA_FTP_URL: ${{ secrets.OTA_FTP_URL }}
