@@ -42,13 +42,21 @@ jobs:
       OTA_FTP_USER: ${{ secrets.OTA_FTP_USER }}
       OTA_FTP_PASSWORD: ${{ secrets.OTA_FTP_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      # The self-hosted runner keeps its workspace between runs: node_modules is left in
+      # place (see "Install dependencies") and everything else untracked is removed.
+      - uses: actions/checkout@v5
+        with:
+          clean: false
 
-      - uses: actions/setup-node@v4
+      - name: Remove the previous run's outputs
+        run: git clean -ffdx -e node_modules
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
-          # No actions/cache: on the self-hosted runner npm's own cache (~/.npm) already stays
-          # on disk, and uploading it (shared with every other project on the machine) is slow.
+          # No actions/cache: npm's own cache (~/.npm) already stays on the runner's disk,
+          # and uploading it (shared with every other project on the machine) is slow.
+          package-manager-cache: false
 
       - name: Pick the channel and the version
         id: target
@@ -97,9 +105,19 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # A fresh `npm ci` takes minutes on the runner: reinstall only when the lockfile
+      # or the Node version changed since the install left in the workspace.
       - name: Install dependencies
         if: steps.live.outputs.skip != 'true'
-        run: npm ci
+        run: |
+          stamp=node_modules/.ci-install-key
+          key="$(node --version)-$(sha256sum package-lock.json | cut -d' ' -f1)"
+          if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$key" ]; then
+            echo "node_modules is up to date ($key)"
+          else
+            npm ci --no-audit --no-fund
+            echo "$key" > "$stamp"
+          fi
 
       - name: Write the signing key
         if: steps.live.outputs.skip != 'true'
