@@ -47,7 +47,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No actions/cache: on the self-hosted runner npm's own cache (~/.npm) already stays
+          # on disk, and uploading it (shared with every other project on the machine) is slow.
 
       - name: Pick the channel and the version
         id: target
