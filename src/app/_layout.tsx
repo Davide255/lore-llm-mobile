@@ -1,13 +1,14 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { setKnowledgeBaseUser } from '@/api';
 import { authUser, loadSession } from '@/auth/session';
 import { ActionSheetHost } from '@/components/action-sheet';
+import { Sidebar } from '@/components/sidebar';
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
@@ -15,6 +16,7 @@ import { resetUploads } from '@/data/uploads';
 import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
 import { loadAppearance } from '@/theme/appearance';
+import { useSplitLayout } from '@/theme/layout';
 import { loadSortOrder } from '@/theme/sort-order';
 import { loadTextScale } from '@/theme/text-size';
 
@@ -26,6 +28,7 @@ loadSession();
 
 export default function RootLayout() {
   const t = useTheme();
+  const split = useSplitLayout();
   const user = authUser.useValue();
   // The user whose space the knowledge-base client has loaded (undefined: not yet known).
   const [space, setSpace] = useState<string | null | undefined>(undefined);
@@ -70,29 +73,35 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={navTheme}>
           <StatusBar barStyle={t.scheme === 'dark' ? 'light-content' : 'dark-content'} />
-          <Stack screenOptions={stackOptions(t)}>
-            {/* Login is required before anything else is shown. */}
-            <Stack.Protected guard={!signedIn}>
-              <Stack.Screen name="sign-in" options={{ headerShown: false, animation: 'fade' }} />
-            </Stack.Protected>
-            <Stack.Protected guard={signedIn}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
-              <Stack.Screen name="folder/[...path]" options={{ headerLargeTitle: true, title: '' }} />
-              <Stack.Screen name="file/[...path]" options={{ title: '' }} />
-              <Stack.Screen name="attachment/[...path]" options={{ title: '' }} />
-              <Stack.Screen name="change/[id]" options={{ title: '' }} />
-              <Stack.Screen name="agent/[id]" options={{ title: '' }} />
-              <Stack.Screen name="team/[id]" options={{ title: '' }} />
-              <Stack.Screen name="edit/[...path]" options={{ presentation: 'modal', title: '' }} />
-              <Stack.Screen name="new-file" options={{ presentation: 'modal', title: 'Nuovo file' }} />
-              <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
-              <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
-              <Stack.Screen name="move" options={{ presentation: 'modal', title: 'Sposta in…' }} />
-              <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
-              <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
-              <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
-            </Stack.Protected>
-          </Stack>
+          {/* Tablet: the desktop app's sidebar, always beside the content (phones keep the tab bar). */}
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            {signedIn && split ? <Sidebar /> : null}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Stack screenOptions={stackOptions(t)}>
+                {/* Login is required before anything else is shown. */}
+                <Stack.Protected guard={!signedIn}>
+                  <Stack.Screen name="sign-in" options={{ headerShown: false, animation: 'fade' }} />
+                </Stack.Protected>
+                <Stack.Protected guard={signedIn}>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'fade' }} />
+                  <Stack.Screen name="folder/[...path]" options={{ headerLargeTitle: true, title: '' }} />
+                  <Stack.Screen name="file/[...path]" options={{ title: '' }} />
+                  <Stack.Screen name="attachment/[...path]" options={{ title: '' }} />
+                  <Stack.Screen name="change/[id]" options={{ title: '' }} />
+                  <Stack.Screen name="agent/[id]" options={{ title: '' }} />
+                  <Stack.Screen name="team/[id]" options={{ title: '' }} />
+                  <Stack.Screen name="edit/[...path]" options={{ presentation: 'modal', title: '' }} />
+                  <Stack.Screen name="new-file" options={{ presentation: 'modal', title: 'Nuovo file' }} />
+                  <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
+                  <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
+                  <Stack.Screen name="move" options={{ presentation: 'modal', title: 'Sposta in…' }} />
+                  <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
+                  <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
+                  <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
+                </Stack.Protected>
+              </Stack>
+            </View>
+          </View>
           <ActionSheetHost />
           <ToastHost />
         </ThemeProvider>

@@ -14,24 +14,31 @@ import {
 
 import { Icon, type IconName } from './icon';
 import { brand, fonts, useTheme } from '@/theme';
+import { CONTENT_MAX_WIDTH, useSplitLayout } from '@/theme/layout';
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
-/** Scroll container that cooperates with native large-title headers. */
+/**
+ * Scroll container that cooperates with native large-title headers. Beside the
+ * tablet sidebar the content keeps a reading width, centred, as on the desktop app.
+ */
 export function Screen({
   children,
   contentContainerStyle,
   ref,
+  wide,
   ...rest
-}: ScrollViewProps & { children: ReactNode; ref?: Ref<ScrollView> }) {
+}: ScrollViewProps & { children: ReactNode; ref?: Ref<ScrollView>; /** Use the whole width (e.g. a grid of cards). */ wide?: boolean }) {
   const t = useTheme();
+  const split = useSplitLayout();
+  const width = split ? { width: '100%' as const, maxWidth: wide ? undefined : CONTENT_MAX_WIDTH + 2 * 28, alignSelf: 'center' as const, paddingHorizontal: 28 } : null;
   return (
     <ScrollView
       ref={ref}
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: t.background }}
-      contentContainerStyle={[{ paddingHorizontal: 16, paddingBottom: 48 }, contentContainerStyle]}
+      contentContainerStyle={[{ paddingHorizontal: 16, paddingBottom: 48 }, width, contentContainerStyle]}
       {...rest}>
       {children}
     </ScrollView>
@@ -283,8 +290,9 @@ export function EmptyState({ icon, title, message }: { icon: IconName; title: st
 /** Two-line custom header title: monospaced filename + caption. */
 export function HeaderTitle({ title, subtitle, mono = true, subtitleColor }: { title: string; subtitle?: string; mono?: boolean; subtitleColor?: string }) {
   const t = useTheme();
+  const split = useSplitLayout();
   return (
-    <View style={{ alignItems: 'center', maxWidth: 220 }}>
+    <View style={{ alignItems: 'center', maxWidth: split ? 420 : 220 }}>
       <Text numberOfLines={1} style={{ color: t.text, fontSize: mono ? 14.5 : 15, fontWeight: '600', fontFamily: mono ? fonts.mono : undefined }}>
         {title}
       </Text>

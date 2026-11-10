@@ -6,13 +6,15 @@ import type { Project } from '@/api';
 import { EntryRow } from '@/components/entry-row';
 import { HeaderItems } from '@/components/header-items';
 import { PendingInvites } from '@/components/invites';
+import { ProjectGrid } from '@/components/project-card';
 import { Icon, projectIcons } from '@/components/icon';
-import { Cell, EmptyState, ErrorState, IconWell, Loading, Pill, ProgressBar, Screen, Section } from '@/components/ui';
+import { Cell, EmptyState, ErrorState, IconWell, Loading, Pill, ProgressBar, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useMyInvites, useProjects, useRecentFiles, useStars, useSummary } from '@/data/hooks';
 import { plural, relativeTime } from '@/lib/format';
 import { basename, projectLabel } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { useTheme, type Theme } from '@/theme';
+import { useSplitLayout } from '@/theme/layout';
 
 /** Accent wells for the brand-coloured project icons (A1). */
 function wellColors(p: Project, t: Theme) {
@@ -43,6 +45,8 @@ export default function ProjectsScreen() {
   const invites = useMyInvites();
   const stars = useStars();
   const [filter, setFilter] = useState('');
+  // Tablet: the desktop app's grid of project cards, starred first.
+  const split = useSplitLayout();
 
   const starredProjects = new Set((stars.data ?? []).filter((s) => s.kind === 'project').map((s) => s.path));
   const visible = (projects.data ?? []).filter((p) => p.title.toLowerCase().includes(filter.trim().toLowerCase()));
@@ -86,6 +90,8 @@ export default function ProjectsScreen() {
         <ErrorState error={projects.error} onRetry={projects.refresh} />
       ) : (
         <Screen
+          wide={split}
+          contentContainerStyle={split ? { maxWidth: 1120 } : undefined}
           refreshControl={
             <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh(), invites.refresh()])} />
           }>
@@ -96,6 +102,15 @@ export default function ProjectsScreen() {
               title={filter ? 'Nessun progetto trovato' : 'Nessun progetto'}
               message={filter ? undefined : 'Crea il primo progetto con il pulsante +.'}
             />
+          ) : split ? (
+            <>
+              <SectionHeader>
+                {summary.data && !filter
+                  ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
+                  : plural(visible.length, 'progetto', 'progetti')}
+              </SectionHeader>
+              <ProjectGrid projects={[...favorites, ...others]} starred={starredProjects} />
+            </>
           ) : (
             <>
               {favorites.length > 0 && <Section header="Preferiti">{favorites.map((p) => projectRow(p, true))}</Section>}
