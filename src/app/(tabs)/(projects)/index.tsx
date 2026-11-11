@@ -36,6 +36,16 @@ function StarButton({ path, label, starred }: { path: string; label: string; sta
   );
 }
 
+/** Reminds that the project belongs to a team (shown next to the star). */
+function TeamBadge({ name }: { name: string }) {
+  const t = useTheme();
+  return (
+    <View accessible accessibilityLabel={`Progetto del team ${name}`}>
+      <Icon name="team" size={18} color={t.textMuted} />
+    </View>
+  );
+}
+
 /** A1 — Projects. */
 export default function ProjectsScreen() {
   const t = useTheme();
@@ -65,6 +75,7 @@ export default function ProjectsScreen() {
       right={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {p.team && <Pill>{p.team.name}</Pill>}
+          {p.team && <TeamBadge name={p.team.name} />}
           <StarButton path={p.name} label={p.title} starred={starred} />
         </View>
       }>
