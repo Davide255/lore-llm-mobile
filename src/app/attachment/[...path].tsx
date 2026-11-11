@@ -4,13 +4,15 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Text, View, useWindowD
 
 import { Icon } from '@/components/icon';
 import { openPdf, useAttachmentSource } from '@/components/attachment';
+import { HeaderItems } from '@/components/header-items';
+import { PdfView, canPreviewPdf } from '@/components/pdf-view';
 import { HeaderTitle } from '@/components/ui';
 import { attachmentKind } from '@/lib/attachments';
 import { basename } from '@/lib/paths';
 import { pathParam } from '@/lib/routes';
 import { useTheme } from '@/theme';
 
-/** An image (pinch to zoom) or a PDF (opened by the system) attached to a project. */
+/** An image (pinch to zoom) or a PDF (shown in-app on iOS, otherwise opened by the system) attached to a project. */
 export default function AttachmentScreen() {
   const t = useTheme();
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
@@ -36,6 +38,11 @@ export default function AttachmentScreen() {
         ) : (
           <ActivityIndicator style={{ flex: 1 }} />
         )
+      ) : canPreviewPdf ? (
+        <>
+          <HeaderItems right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => openPdf(path) }]} />
+          <PdfView path={path} />
+        </>
       ) : (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 32 }}>
           <Icon name="doc" size={44} color={t.accentText} />

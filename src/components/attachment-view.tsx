@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Platform, Text, View } from 'react-native';
 
+import { PdfView, canPreviewPdf } from './pdf-view';
 import { EmptyState, ErrorState, HeaderTitle, Loading, Screen } from './ui';
 import { kb } from '@/api';
 import { useFolder } from '@/data/hooks';
@@ -19,6 +20,7 @@ export function AttachmentView({ path }: { path: string }) {
   const name = path.split('/').pop() ?? '';
   const folder = useFolder(dirname(path));
   const entry = folder.data?.files.find((f) => f.path === path);
+  const isPdf = attachmentKind(name) === 'pdf';
   const preview = Platform.OS !== 'web' && isPreviewableImage(name);
   const [source, setSource] = useState<{ uri: string; headers: Record<string, string> } | null>(null);
   const [ratio, setRatio] = useState(1);
@@ -44,11 +46,13 @@ export function AttachmentView({ path }: { path: string }) {
         <Loading />
       ) : folder.error ? (
         <ErrorState error={folder.error} onRetry={folder.refresh} />
+      ) : isPdf && canPreviewPdf ? (
+        <PdfView path={path} />
       ) : !preview ? (
         <EmptyState
-          icon={attachmentKind(name) === 'pdf' ? 'pdf' : 'image'}
+          icon={isPdf ? 'pdf' : 'image'}
           title="Anteprima non disponibile"
-          message="Il file è nella base e gli agenti possono leggerlo; per ora l’app mostra solo le immagini PNG, JPG, GIF e WebP."
+          message="Il file è nella base e gli agenti possono leggerlo; per ora l’app mostra le immagini PNG, JPG, GIF e WebP e, su iPhone, i PDF."
         />
       ) : failed ? (
         <EmptyState icon="warning" title="Impossibile caricare l’immagine" message="Controlla la connessione e riprova." />
