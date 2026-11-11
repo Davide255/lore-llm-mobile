@@ -22,7 +22,6 @@ import { useSortOrder } from '@/theme/sort-order';
 
 const SECTION_HREF: Record<SidebarSection, Href> = {
   projects: '/',
-  search: '/search',
   activity: '/activity',
   settings: '/settings',
 };
@@ -31,6 +30,12 @@ const SECTION_HREF: Record<SidebarSection, Href> = {
 function openSection(section: SidebarSection) {
   if (router.canDismiss()) router.dismissAll();
   router.navigate(SECTION_HREF[section]);
+}
+
+/** Global search lives in the Projects screen's bar: open it, focused. */
+function openSearch() {
+  if (router.canDismiss()) router.dismissAll();
+  router.navigate({ pathname: '/', params: { search: '1' } });
 }
 
 /** A file or folder picked in the tree takes the place of what the content pane shows. */
@@ -76,9 +81,9 @@ export function Sidebar() {
         { width: SIDEBAR_WIDTH, backgroundColor: t.sidebar, borderColor: t.hairline, paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10, paddingLeft: insets.left + 10 },
       ]}>
       <Pressable
-        onPress={() => openSection('search')}
+        onPress={openSearch}
         accessibilityRole="search"
-        style={({ pressed }) => [styles.search, { backgroundColor: pressed || section === 'search' ? t.fill : t.fillSubtle }]}>
+        style={({ pressed }) => [styles.search, { backgroundColor: pressed ? t.fill : t.fillSubtle }]}>
         <Icon name="search" size={17} color={t.textMuted} />
         <Text style={{ flex: 1, fontSize: 15, color: t.textMuted }}>Cerca</Text>
       </Pressable>

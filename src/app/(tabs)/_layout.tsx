@@ -15,10 +15,6 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf={{ default: 'folder', selected: 'folder.fill' }} md="folder" />
         <NativeTabs.Trigger.Label>Progetti</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="search" role="search">
-        <NativeTabs.Trigger.Icon sf="magnifyingglass" md="search" />
-        <NativeTabs.Trigger.Label>Cerca</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="activity">
         <NativeTabs.Trigger.Icon sf={{ default: 'bolt', selected: 'bolt.fill' }} md="bolt" />
         <NativeTabs.Trigger.Label>Attività</NativeTabs.Trigger.Label>
@@ -31,14 +27,13 @@ export default function TabsLayout() {
   );
 }
 
-/** Headless tabs: the same four sections, switched from the sidebar (see components/sidebar). */
+/** Headless tabs: the same three sections, switched from the sidebar (see components/sidebar). */
 function SidebarTabs() {
   return (
     <Tabs style={{ flex: 1 }}>
       <TabSlot />
       <TabList style={{ display: 'none' }}>
         <TabTrigger name="(projects)" href="/" />
-        <TabTrigger name="search" href="/search" />
         <TabTrigger name="activity" href="/activity" />
         <TabTrigger name="settings" href="/settings" />
       </TabList>

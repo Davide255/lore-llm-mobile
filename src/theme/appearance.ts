@@ -6,6 +6,13 @@ import { createSignal } from '@/data/store';
 /** Per-device UI preference (not part of the knowledge base settings). */
 export type AppearancePreference = 'system' | 'light' | 'dark';
 
+/** The choices offered in Settings → Aspetto, in order. */
+export const appearanceOptions: { value: AppearancePreference; label: string }[] = [
+  { value: 'system', label: 'Sistema' },
+  { value: 'light', label: 'Chiaro' },
+  { value: 'dark', label: 'Scuro' },
+];
+
 const STORAGE_KEY = 'ui.appearance';
 const preference = createSignal<AppearancePreference>('system');
 

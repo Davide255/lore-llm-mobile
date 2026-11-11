@@ -24,7 +24,6 @@ describe('isSplitLayout', () => {
 describe('sidebarSelection', () => {
   it('maps tab routes to their section', () => {
     assert.deepEqual(sidebarSelection('/'), { section: 'projects', path: null });
-    assert.deepEqual(sidebarSelection('/search'), { section: 'search', path: null });
     assert.deepEqual(sidebarSelection('/activity'), { section: 'activity', path: null });
     assert.deepEqual(sidebarSelection('/change/42'), { section: 'activity', path: null });
     assert.deepEqual(sidebarSelection('/settings'), { section: 'settings', path: null });

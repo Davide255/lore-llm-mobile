@@ -1,9 +1,11 @@
-import { router, Stack } from 'expo-router';
-import { useState } from 'react';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, Text, View } from 'react-native';
+import type { SearchBarCommands } from 'react-native-screens';
 
 import type { Project } from '@/api';
 import { EntryRow } from '@/components/entry-row';
+import { GlobalSearchResults, RecentSearches, useDebounced } from '@/components/global-search';
 import { HeaderItems } from '@/components/header-items';
 import { PendingInvites } from '@/components/invites';
 import { ProjectGrid } from '@/components/project-card';
@@ -46,7 +48,7 @@ function TeamBadge({ name }: { name: string }) {
   );
 }
 
-/** A1 — Projects. */
+/** A1 — Projects. Its search bar is the app's global search (projects and notes). */
 export default function ProjectsScreen() {
   const t = useTheme();
   const projects = useProjects();
@@ -54,17 +56,28 @@ export default function ProjectsScreen() {
   const recent = useRecentFiles(3);
   const invites = useMyInvites();
   const stars = useStars();
-  const [filter, setFilter] = useState('');
+  const bar = useRef<SearchBarCommands>(null);
+  const [text, setText] = useState('');
+  const [focused, setFocused] = useState(false);
+  const query = useDebounced(text.trim());
+  const searching = !!text.trim();
+  // The tablet sidebar's «Cerca» lands here with ?search=1: focus the bar.
+  const { search } = useLocalSearchParams<{ search?: string }>();
+  useEffect(() => {
+    if (!search) return;
+    bar.current?.focus();
+    router.setParams({ search: undefined });
+  }, [search]);
   // Tablet: the desktop app's grid of project cards, starred first.
   const split = useSplitLayout();
 
   const starredProjects = new Set((stars.data ?? []).filter((s) => s.kind === 'project').map((s) => s.path));
-  const visible = (projects.data ?? []).filter((p) => p.title.toLowerCase().includes(filter.trim().toLowerCase()));
+  const visible = projects.data ?? [];
   const favorites = visible.filter((p) => starredProjects.has(p.name));
   const others = visible.filter((p) => !starredProjects.has(p.name));
   // Starred notes of projects the user can no longer see are left out.
   const known = new Set((projects.data ?? []).map((p) => p.name));
-  const starredNotes = (stars.data ?? []).filter((s) => s.kind === 'note' && known.has(s.path.split('/')[0]!) && !filter);
+  const starredNotes = (stars.data ?? []).filter((s) => s.kind === 'note' && known.has(s.path.split('/')[0]!));
 
   const projectRow = (p: Project, starred: boolean) => (
     <EntryRow
@@ -93,7 +106,17 @@ export default function ProjectsScreen() {
   return (
     <>
       <Stack.Screen options={{ title: 'Progetti' }} />
-      <Stack.SearchBar placeholder="Cerca" hideWhenScrolling={false} onChangeText={(e) => setFilter(e.nativeEvent.text)} />
+      <Stack.SearchBar
+        ref={bar}
+        placeholder="Cerca in progetti e note"
+        hideWhenScrolling={false}
+        cancelButtonText="Annulla"
+        onChangeText={(e) => setText(e.nativeEvent.text)}
+        onSearchButtonPress={(e) => actions.addRecentSearch(e.nativeEvent.text)}
+        onCancelButtonPress={() => setText('')}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
       <HeaderItems right={[{ kind: 'button', label: 'Nuovo progetto', icon: 'addCircle', onPress: () => router.push(routes.newProject()) }]} />
       {projects.loading ? (
         <Loading />
@@ -102,75 +125,88 @@ export default function ProjectsScreen() {
       ) : (
         <Screen
           wide={split}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={split ? { maxWidth: 1120 } : undefined}
           refreshControl={
             <RefreshControl refreshing={projects.refreshing} onRefresh={() => Promise.all([projects.refresh(), summary.refresh(), recent.refresh(), invites.refresh()])} />
           }>
-          {!filter && <PendingInvites />}
-          {visible.length === 0 ? (
-            <EmptyState
-              icon="folder"
-              title={filter ? 'Nessun progetto trovato' : 'Nessun progetto'}
-              message={filter ? undefined : 'Crea il primo progetto con il pulsante +.'}
-            />
-          ) : split ? (
-            <>
-              <SectionHeader>
-                {summary.data && !filter
-                  ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
-                  : plural(visible.length, 'progetto', 'progetti')}
-              </SectionHeader>
-              <ProjectGrid projects={[...favorites, ...others]} starred={starredProjects} />
-            </>
+          {searching ? (
+            query ? (
+              <GlobalSearchResults query={query} projects={visible} renderProject={(p) => projectRow(p, starredProjects.has(p.name))} />
+            ) : null
           ) : (
             <>
-              {favorites.length > 0 && <Section header="Preferiti">{favorites.map((p) => projectRow(p, true))}</Section>}
-              {others.length > 0 && (
-                <Section
-                  header={
-                    favorites.length > 0
-                      ? 'Progetti'
-                      : summary.data && !filter
-                        ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
-                        : `${plural(visible.length, 'progetto', 'progetti')}`
-                  }>
-                  {others.map((p) => projectRow(p, false))}
+              {focused && (
+                <RecentSearches
+                  onPick={(q) => {
+                    bar.current?.setText(q);
+                    setText(q);
+                  }}
+                />
+              )}
+              <PendingInvites />
+              {visible.length === 0 ? (
+                <EmptyState icon="folder" title="Nessun progetto" message="Crea il primo progetto con il pulsante +." />
+              ) : split ? (
+                <>
+                  <SectionHeader>
+                    {summary.data
+                      ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
+                      : plural(visible.length, 'progetto', 'progetti')}
+                  </SectionHeader>
+                  <ProjectGrid projects={[...favorites, ...others]} starred={starredProjects} />
+                </>
+              ) : (
+                <>
+                  {favorites.length > 0 && <Section header="Preferiti">{favorites.map((p) => projectRow(p, true))}</Section>}
+                  {others.length > 0 && (
+                    <Section
+                      header={
+                        favorites.length > 0
+                          ? 'Progetti'
+                          : summary.data
+                            ? `${plural(summary.data.projectCount, 'progetto', 'progetti')} · ${summary.data.fileCount} file`
+                            : `${plural(visible.length, 'progetto', 'progetti')}`
+                      }>
+                      {others.map((p) => projectRow(p, false))}
+                    </Section>
+                  )}
+                </>
+              )}
+
+              {starredNotes.length > 0 && (
+                <Section header="Note preferite">
+                  {starredNotes.map((n) => (
+                    <Cell
+                      key={n.path}
+                      icon={<IconWell name="doc" />}
+                      title={basename(n.path)}
+                      mono
+                      subtitle={projectLabel(n.path)}
+                      chevron
+                      onPress={() => router.push(routes.file(n.path))}
+                      right={<StarButton path={n.path} label={basename(n.path)} starred />}
+                    />
+                  ))}
+                </Section>
+              )}
+
+              {!!recent.data?.length && (
+                <Section header="Recenti">
+                  {recent.data.map((r) => (
+                    <Cell
+                      key={r.path}
+                      icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : 'doc'} />}
+                      title={r.name}
+                      mono
+                      subtitle={projectLabel(r.project)}
+                      chevron
+                      onPress={() => router.push(routes.file(r.path))}
+                    />
+                  ))}
                 </Section>
               )}
             </>
-          )}
-
-          {starredNotes.length > 0 && (
-            <Section header="Note preferite">
-              {starredNotes.map((n) => (
-                <Cell
-                  key={n.path}
-                  icon={<IconWell name="doc" />}
-                  title={basename(n.path)}
-                  mono
-                  subtitle={projectLabel(n.path)}
-                  chevron
-                  onPress={() => router.push(routes.file(n.path))}
-                  right={<StarButton path={n.path} label={basename(n.path)} starred />}
-                />
-              ))}
-            </Section>
-          )}
-
-          {!filter && !!recent.data?.length && (
-            <Section header="Recenti">
-              {recent.data.map((r) => (
-                <Cell
-                  key={r.path}
-                  icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : 'doc'} />}
-                  title={r.name}
-                  mono
-                  subtitle={projectLabel(r.project)}
-                  chevron
-                  onPress={() => router.push(routes.file(r.path))}
-                />
-              ))}
-            </Section>
           )}
         </Screen>
       )}
