@@ -3,6 +3,7 @@
   Exports, signs and stages a live-update (see docs/OTA.md).
 
     node scripts/publish-ota.mjs --channel beta [--version 1.2.3] [--skip-build] [--upload]
+    node scripts/publish-ota.mjs --print-fingerprint --channel production  # native fingerprint to record in ota.config.json
     node scripts/publish-ota.mjs --setup                        # upload ota-server/ (.htaccess) once
     node scripts/publish-ota.mjs --upload-only --channel beta   # re-upload what is already staged
     node scripts/publish-ota.mjs --promote                      # copy the beta release to production
@@ -31,6 +32,7 @@ import {
   SEMVER,
   buildManifest,
   defaultVersion,
+  nativeFingerprint,
   signManifest,
   signatureHtaccess,
 } from "./ota-lib.mjs";
@@ -144,6 +146,28 @@ const publish = (args) => {
   }
   const version = typeof args.version === "string" ? args.version : defaultVersion(pkg.version, sha);
   if (!SEMVER.test(version)) fail(`Invalid version "${version}": must be semver.`);
+
+  // A bundle must only reach binaries that can run it: the native side (SDK, react-native,
+  // native modules, plugins, Info.plist...) is frozen per runtimeVersion.
+  const current = nativeFingerprint({
+    pkg,
+    expo: JSON.parse(readFileSync(path.join(root, "app.json"), "utf8")).expo,
+    rootDir: root,
+  });
+  if (args["print-fingerprint"]) {
+    console.log(current);
+    process.exit(0);
+  }
+  if (otaConfig.nativeFingerprint !== current && !args["force-native"]) {
+    fail(
+      `The native side changed since runtimeVersion ${otaConfig.runtimeVersion} was recorded ` +
+        `(expo/react-native/native modules, plugins or iOS config).\n` +
+        `  An OTA bundle cannot run on the existing store build. Release a new store build, then bump\n` +
+        `  runtimeVersion in app.json AND ota.config.json and set nativeFingerprint in ota.config.json to:\n` +
+        `  ${current}\n` +
+        `  (--force-native skips this check: only if the change is known to be JS-only.)`,
+    );
+  }
 
   const exportDir = path.join(root, "dist");
   if (!args["skip-build"]) {

@@ -4,6 +4,7 @@ Ships JS and asset changes to installed iOS builds without a store release. Self
 
 ## What it can and cannot do
 - **Replaces only the JS bundle and assets.** Anything native needs a store release: new or upgraded native modules, config plugins, `modules/`, Info.plist, entitlements, SDK bumps. After such a change bump `runtimeVersion` in `app.json` **and** `ota.config.json` (they must match, the script checks) so old builds never receive a bundle they cannot run.
+  `publish-ota.mjs` enforces it: `ota.config.json` records a `nativeFingerprint` (hash of the native dependencies — `expo*`, `react*`, `@expo/*`, `@react-native*` —, config plugins, iOS/Android config, `modules/` and `plugins/`; app version and build number are ignored). If it no longer matches, publishing stops. Release the store build, bump `runtimeVersion` in both files and paste the new value printed by `npm run ota:publish -- --print-fingerprint --channel production`. `--force-native` skips the check (only for a known JS-only change).
 - Apple allows downloaded interpreted code (Guideline 3.3.2) only if it does not change the app's primary purpose. Mention OTA in the App Review notes.
 
 ## How it works

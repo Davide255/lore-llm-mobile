@@ -10,6 +10,7 @@ import {
   contentTypeFor,
   defaultVersion,
   md5Hex,
+  nativeFingerprint,
   sha256Base64Url,
   signManifest,
   signatureHtaccess,
@@ -106,4 +107,30 @@ test("defaultVersion is valid semver", () => {
   const v = defaultVersion("1.0.0", "abc1234", new Date("2026-10-20T22:30:00Z"));
   assert.equal(v, "1.0.0-ota.d20261020t2230.gabc1234");
   assert.match(v, SEMVER);
+});
+
+test("nativeFingerprint changes with native deps, plugins and iOS config, not with JS-only edits", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ota-native-"));
+  const pkg = { version: "1.0.0", dependencies: { expo: "~58.0.0", "react-native": "0.88.1", "mathjax-full": "^3.2.2" } };
+  const expo = { version: "1.0.0", plugins: ["expo-router"], ios: { buildNumber: "8", supportsTablet: true } };
+  const base = nativeFingerprint({ pkg, expo, rootDir: dir });
+  const fp = (p, e) => nativeFingerprint({ pkg: p, expo: e, rootDir: dir });
+
+  // Not native: app version, build number, a pure-JS dependency.
+  assert.equal(fp({ ...pkg, version: "1.0.1", dependencies: { ...pkg.dependencies, "mathjax-full": "^4.0.0" } },
+    { ...expo, version: "1.0.1", ios: { ...expo.ios, buildNumber: "9" } }), base);
+  // Native: SDK / RN bump, a new native module, a plugin, an iOS setting.
+  assert.notEqual(fp({ ...pkg, dependencies: { ...pkg.dependencies, "react-native": "0.89.0" } }, expo), base);
+  assert.notEqual(fp({ ...pkg, dependencies: { ...pkg.dependencies, "react-native-webview": "14.0.1" } }, expo), base);
+  assert.notEqual(fp(pkg, { ...expo, plugins: [...expo.plugins, "expo-secure-store"] }), base);
+  assert.notEqual(fp(pkg, { ...expo, ios: { ...expo.ios, supportsTablet: false } }), base);
+});
+
+test("nativeFingerprint covers the local native modules and plugins", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ota-native-"));
+  mkdirSync(path.join(dir, "plugins"));
+  const input = { pkg: { dependencies: {} }, expo: {}, rootDir: dir };
+  const before = nativeFingerprint(input);
+  writeFileSync(path.join(dir, "plugins/p.js"), "module.exports = 1");
+  assert.notEqual(nativeFingerprint(input), before);
 });
