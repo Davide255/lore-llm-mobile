@@ -22,7 +22,7 @@
       "icon": "./assets/lore-llm.icon",
       "supportsTablet": true,
       "bundleIdentifier": "it.lore.llm",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "appleTeamId": "ZVCQ7Q6256",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
