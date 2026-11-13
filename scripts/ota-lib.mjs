@@ -1,7 +1,7 @@
 // Pure helpers for scripts/publish-ota.mjs (see docs/OTA.md). No I/O side effects
 // beyond reading the files they are given, so they can be unit-tested.
 import { createHash, createSign, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 const CONTENT_TYPES = {
@@ -119,3 +119,55 @@ export const defaultVersion = (pkgVersion, sha = "nogit", now = new Date()) => {
 
 export const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+
+/*
+  Native fingerprint: everything that ends up in the store binary and that an OTA
+  bundle cannot change. If it differs from the one recorded for the current
+  runtimeVersion, a bundle published under that runtimeVersion would reach builds
+  that cannot run it, so publishing must stop until runtimeVersion is bumped
+  (docs/OTA.md). Pure-JS dependencies (mathjax-full, punycode...) are ignored;
+  app version and build number are too.
+*/
+const NATIVE_DEP = /^(expo($|-)|@expo\/|react($|-)|@react-native)/;
+
+// Hashes the files below the given directories (native modules, config plugins).
+const hashTrees = (rootDir, dirs) => {
+  const h = createHash("sha256");
+  const walk = (dir) => {
+    for (const name of readdirSync(dir).sort()) {
+      if (name === "node_modules" || name === ".DS_Store") continue;
+      const full = path.join(dir, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else h.update(path.relative(rootDir, full)).update(readFileSync(full));
+    }
+  };
+  for (const d of dirs) {
+    try {
+      walk(path.join(rootDir, d));
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+  }
+  return h.digest("hex");
+};
+
+export const nativeFingerprintInput = ({ pkg, expo, rootDir, trees = ["modules", "plugins"] }) => {
+  const deps = Object.fromEntries(
+    Object.entries(pkg.dependencies ?? {})
+      .filter(([name]) => NATIVE_DEP.test(name))
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  const { buildNumber: _b, ...ios } = expo.ios ?? {};
+  const { versionCode: _v, ...android } = expo.android ?? {};
+  return {
+    deps,
+    plugins: expo.plugins ?? [],
+    ios,
+    android,
+    newArchEnabled: expo.newArchEnabled ?? null,
+    localNative: rootDir ? hashTrees(rootDir, trees) : null,
+  };
+};
+
+export const nativeFingerprint = (input) =>
+  createHash("sha256").update(JSON.stringify(nativeFingerprintInput(input))).digest("hex");
