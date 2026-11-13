@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 
+import { useAutoHideHeader } from '@/components/auto-hide-header';
 import { Icon } from '@/components/icon';
 import { openPdf, useAttachmentSource } from '@/components/attachment';
 import { HeaderItems } from '@/components/header-items';
@@ -20,16 +21,20 @@ export default function AttachmentScreen() {
   const source = useAttachmentSource(path);
   const { width, height } = useWindowDimensions();
   const [opening, setOpening] = useState(false);
+  const onScroll = useAutoHideHeader();
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
-      <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={basename(path)} /> }} />
+      <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={basename(path)} />, headerBlurEffect: 'systemMaterial' }} />
       {kind === 'image' ? (
         source ? (
           <ScrollView
             maximumZoomScale={5}
             minimumZoomScale={1}
             centerContent
+            contentInsetAdjustmentBehavior="automatic"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
             showsHorizontalScrollIndicator={false}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>

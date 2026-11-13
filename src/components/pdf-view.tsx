@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+import { useAutoHideHeader } from './auto-hide-header';
 import { EmptyState, Loading } from './ui';
 import { kb } from '@/api';
 import { basename } from '@/lib/paths';
@@ -16,6 +17,7 @@ export function PdfView({ path }: { path: string }) {
   const t = useTheme();
   const [uri, setUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const onScroll = useAutoHideHeader();
 
   useEffect(() => {
     let current = true;
@@ -41,6 +43,9 @@ export function PdfView({ path }: { path: string }) {
       source={{ uri }}
       originWhitelist={['*']}
       allowingReadAccessToURL={Paths.cache.uri}
+      // The header is transparent: start the first page below it (the inset follows it as it hides).
+      contentInsetAdjustmentBehavior="automatic"
+      onScroll={onScroll}
       onError={() => setFailed(true)}
       onHttpError={() => setFailed(true)}
       style={{ flex: 1, backgroundColor: t.background }}

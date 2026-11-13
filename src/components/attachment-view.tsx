@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Platform, Text, View } from 'react-native';
 
+import { useAutoHideHeader } from './auto-hide-header';
 import { PdfView, canPreviewPdf } from './pdf-view';
 import { EmptyState, ErrorState, HeaderTitle, Loading, Screen } from './ui';
 import { kb } from '@/api';
@@ -25,6 +26,7 @@ export function AttachmentView({ path }: { path: string }) {
   const [source, setSource] = useState<{ uri: string; headers: Record<string, string> } | null>(null);
   const [ratio, setRatio] = useState(1);
   const [failed, setFailed] = useState(false);
+  const onScroll = useAutoHideHeader();
 
   useEffect(() => {
     if (!preview) return;
@@ -41,7 +43,7 @@ export function AttachmentView({ path }: { path: string }) {
 
   return (
     <>
-      <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={name} subtitle={subtitle} /> }} />
+      <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={name} subtitle={subtitle} />, headerBlurEffect: 'systemMaterial' }} />
       {folder.loading ? (
         <Loading />
       ) : folder.error ? (
@@ -57,7 +59,7 @@ export function AttachmentView({ path }: { path: string }) {
       ) : failed ? (
         <EmptyState icon="warning" title="Impossibile caricare l’immagine" message="Controlla la connessione e riprova." />
       ) : (
-        <Screen contentContainerStyle={{ paddingTop: 14 }}>
+        <Screen contentContainerStyle={{ paddingTop: 14 }} onScroll={onScroll} scrollEventThrottle={16}>
           {source ? (
             <Image
               source={source}
