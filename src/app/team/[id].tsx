@@ -5,8 +5,8 @@ import type { TeamMember, TeamRole } from '@/api';
 import { showActionSheet } from '@/components/action-sheet';
 import { AgentAvatar, initialsOf } from '@/components/identity';
 import { Cell, ErrorState, IconWell, Loading, Pill, Screen, Section } from '@/components/ui';
-import { actions, attempt, useTeam, useTeamInvites, useTeamMembers } from '@/data/hooks';
-import { expiresIn } from '@/lib/format';
+import { actions, attempt, useProjects, useTeam, useTeamInvites, useTeamMembers } from '@/data/hooks';
+import { expiresIn, plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
 import { ROLE_HINT, ROLE_LABEL, canManage, otherRoles, sortMembers } from '@/lib/teams';
 import { useTheme } from '@/theme';
@@ -20,6 +20,8 @@ export default function TeamScreen() {
   const owner = !!team.data && canManage(team.data.role);
   const invites = useTeamInvites(owner ? id : null);
   const me = members.data?.find((m) => m.isYou);
+  const projects = useProjects();
+  const teamProjects = (projects.data ?? []).filter((p) => p.team?.id === id);
 
   const leave = () =>
     Alert.alert(`Uscire da ${team.data?.name}?`, 'Non vedrai più i suoi file. Potrai rientrare solo con un nuovo invito.', [
@@ -96,6 +98,20 @@ export default function TeamScreen() {
               right={owner ? <Text style={{ color: t.accentText, fontSize: 15 }}>Rinomina</Text> : undefined}
               onPress={owner ? () => router.push({ pathname: '/new-team', params: { id } }) : undefined}
             />
+          </Section>
+
+          <Section
+            header={`Progetti · ${teamProjects.length}`}
+            footer={teamProjects.length === 0 ? 'Nessun progetto: apri il menu di un tuo progetto e scegli “Sposta in un team…”.' : undefined}>
+            {teamProjects.map((p) => (
+              <Cell
+                key={p.name}
+                icon={<IconWell name="folder" />}
+                title={p.title}
+                subtitle={`${plural(p.fileCount, 'file', 'file')} · ${relativeTime(p.updatedAt)}`}
+                onPress={() => router.push(routes.folder(p.name))}
+              />
+            ))}
           </Section>
 
           <Section header={`Membri · ${members.data?.length ?? 0}`} footer={owner ? 'Tocca un membro per cambiarne il ruolo o rimuoverlo.' : undefined}>

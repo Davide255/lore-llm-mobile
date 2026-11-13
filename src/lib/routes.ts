@@ -19,6 +19,9 @@ export const routes = {
     ({ pathname: '/rename', params: { path, ...(reopen ? { reopen: '1' } : {}) } }) as unknown as Href,
   move: (path: string, reopen = false) =>
     ({ pathname: '/move', params: { path, ...(reopen ? { reopen: '1' } : {}) } }) as unknown as Href,
+  /** Bottom sheet to move a project into a team. `reopen`: the caller is showing the project and must follow it. */
+  moveToTeam: (project: string, reopen = false) =>
+    ({ pathname: '/move-to-team', params: { project, ...(reopen ? { reopen: '1' } : {}) } }) as unknown as Href,
   change: (id: string) => ({ pathname: '/change/[id]', params: { id } }) as unknown as Href,
   agent: (id: string) => ({ pathname: '/agent/[id]', params: { id } }) as unknown as Href,
   connectAgent: () => '/connect-agent' as Href,
