@@ -55,7 +55,7 @@ export default function FolderScreen() {
     { label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(path, true)) },
     ...(isRoot ? [] : [{ label: 'Sposta in…', icon: 'move' as const, onPress: () => router.push(routes.move(path, true)) }]),
     ...(isRoot && !teamOf(path)
-      ? [{ label: 'Sposta in un team…', icon: 'team' as const, onPress: () => chooseTeamForProject(path, (key) => router.replace(routes.folder(key))) }]
+      ? [{ label: 'Sposta in un team…', icon: 'team' as const, onPress: () => chooseTeamForProject(path, true) }]
       : []),
     {
       label: isRoot ? 'Elimina progetto' : 'Elimina cartella',

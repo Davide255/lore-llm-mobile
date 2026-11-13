@@ -88,7 +88,11 @@ export default function RootLayout() {
               <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
               <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
               <Stack.Screen name="move" options={{ presentation: 'modal', title: 'Sposta in…' }} />
-              <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
+              <Stack.Screen
+                name="move-to-team"
+                options={{ presentation: 'formSheet', headerShown: false, sheetAllowedDetents: 'fitToContents', sheetGrabberVisible: true, sheetCornerRadius: 24 }}
+              />
+              <Stack.Screen name="connect-agent"options={{ presentation: 'modal', title: 'Collega un agente' }} />
               <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
               <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
             </Stack.Protected>
