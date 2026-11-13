@@ -4,6 +4,7 @@ import { Alert, Text } from 'react-native';
 import type { TeamMember, TeamRole } from '@/api';
 import { showActionSheet } from '@/components/action-sheet';
 import { AgentAvatar, initialsOf } from '@/components/identity';
+import { projectIcons } from '@/components/icon';
 import { Cell, ErrorState, IconWell, Loading, Pill, Screen, Section } from '@/components/ui';
 import { actions, attempt, useProjects, useTeam, useTeamInvites, useTeamMembers } from '@/data/hooks';
 import { expiresIn, plural, relativeTime } from '@/lib/format';
@@ -11,7 +12,7 @@ import { routes } from '@/lib/routes';
 import { ROLE_HINT, ROLE_LABEL, canManage, otherRoles, sortMembers } from '@/lib/teams';
 import { useTheme } from '@/theme';
 
-/** Team detail: members and roles, pending invitations, rename, leave or delete. */
+/** Team detail: its projects, members and pending invitations in one list, rename, leave or delete. */
 export default function TeamScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -20,8 +21,7 @@ export default function TeamScreen() {
   const owner = !!team.data && canManage(team.data.role);
   const invites = useTeamInvites(owner ? id : null);
   const me = members.data?.find((m) => m.isYou);
-  const projects = useProjects();
-  const teamProjects = (projects.data ?? []).filter((p) => p.team?.id === id);
+  const projects = (useProjects().data ?? []).filter((p) => p.team?.id === id);
 
   const leave = () =>
     Alert.alert(`Uscire da ${team.data?.name}?`, 'Non vedrai più i suoi file. Potrai rientrare solo con un nuovo invito.', [
@@ -100,21 +100,23 @@ export default function TeamScreen() {
             />
           </Section>
 
-          <Section
-            header={`Progetti · ${teamProjects.length}`}
-            footer={teamProjects.length === 0 ? 'Nessun progetto: apri il menu di un tuo progetto e scegli “Sposta in un team…”.' : undefined}>
-            {teamProjects.map((p) => (
+          <Section header={`Progetti · ${projects.length}`} inset={projects.length ? 57 : 13}>
+            {!projects.length && <Cell title="Nessun progetto" subtitle="Per condividerne uno, apri un tuo progetto e scegli «Sposta in un team…» dal menu." />}
+            {projects.map((p) => (
               <Cell
                 key={p.name}
-                icon={<IconWell name="folder" />}
+                icon={<IconWell name={projectIcons[p.icon]} />}
                 title={p.title}
                 subtitle={`${plural(p.fileCount, 'file', 'file')} · ${relativeTime(p.updatedAt)}`}
+                chevron
                 onPress={() => router.push(routes.folder(p.name))}
               />
             ))}
           </Section>
 
-          <Section header={`Membri · ${members.data?.length ?? 0}`} footer={owner ? 'Tocca un membro per cambiarne il ruolo o rimuoverlo.' : undefined}>
+          <Section
+            header={`Membri · ${members.data?.length ?? 0}${invites.data?.length ? ` · ${plural(invites.data.length, 'invito', 'inviti')} in sospeso` : ''}`}
+            footer={owner ? 'Tocca un membro per cambiarne il ruolo o rimuoverlo, un invito per revocarlo. Chi è invitato lo vede in Progetti, entrando con la stessa email.' : undefined}>
             {sortMembers(members.data ?? []).map((m) => (
               <Cell
                 key={m.userId}
@@ -125,29 +127,26 @@ export default function TeamScreen() {
                 onPress={owner && !m.isYou ? () => manageMember(m) : undefined}
               />
             ))}
-          </Section>
-
-          {owner && (
-            <Section
-              header={invites.data?.length ? `Inviti in sospeso · ${invites.data.length}` : 'Inviti'}
-              footer="Chi riceve l’invito lo vede nell’app, in Progetti, entrando con la stessa email.">
-              {(invites.data ?? []).map((i) => (
+            {owner &&
+              (invites.data ?? []).map((i) => (
                 <Cell
                   key={i.id}
                   icon={<IconWell name="mail" />}
                   title={i.email}
-                  subtitle={`${ROLE_LABEL[i.role]} · ${expiresIn(i.expiresAt)}`}
+                  subtitle={`Invito · ${expiresIn(i.expiresAt)}`}
+                  right={<Pill>{ROLE_LABEL[i.role]}</Pill>}
                   onPress={() => manageInvite(i.id, i.email)}
                 />
               ))}
+            {owner && (
               <Cell
                 icon={<IconWell name="add" background="transparent" />}
                 title="Invita una persona"
                 titleColor={t.accentText}
                 onPress={() => router.push(routes.inviteMember(id))}
               />
-            </Section>
-          )}
+            )}
+          </Section>
 
           <Section style={{ marginTop: 24 }} inset={13}>
             {me && <Cell title="Esci dal team" titleColor={t.error} onPress={leave} />}

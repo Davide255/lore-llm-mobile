@@ -27,6 +27,8 @@ export const routes = {
   connectAgent: () => '/connect-agent' as Href,
   team: (id: string) => ({ pathname: '/team/[id]', params: { id } }) as unknown as Href,
   newTeam: () => '/new-team' as Href,
+  /** Settings sub-pages (the Settings tab's own stack). */
+  settings: (page: 'account' | 'teams' | 'agents' | 'appearance') => `/settings/${page}` as Href,
   inviteMember: (teamId: string) => ({ pathname: '/invite-member', params: { teamId } }) as unknown as Href,
 };
 

@@ -71,6 +71,7 @@ export const icons = {
   robot: { sf: 'cpu', md: 'smart_toy' },
   mail: { sf: 'envelope', md: 'mail' },
   restore: { sf: 'arrow.counterclockwise', md: 'restore' },
+  update: { sf: 'arrow.down.circle', md: 'system_update' },
   logout: { sf: 'rectangle.portrait.and.arrow.right', md: 'logout' },
   apple: { sf: 'apple.logo', md: 'login' },
   // Project icons
