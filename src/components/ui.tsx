@@ -12,6 +12,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Icon, type IconName } from './icon';
 import { brand, fonts, useTheme } from '@/theme';
 import { CONTENT_MAX_WIDTH, useSplitLayout } from '@/theme/layout';
@@ -31,6 +33,9 @@ export function Screen({
 }: ScrollViewProps & { children: ReactNode; ref?: Ref<ScrollView>; /** Use the whole width (e.g. a grid of cards). */ wide?: boolean }) {
   const t = useTheme();
   const split = useSplitLayout();
+  // Devices with a side status/navigation strip (iPhone Duo) report it as a side inset.
+  const insets = useSafeAreaInsets();
+  const base = split ? 28 : 16;
   const width = split ? { width: '100%' as const, maxWidth: wide ? undefined : CONTENT_MAX_WIDTH + 2 * 28, alignSelf: 'center' as const, paddingHorizontal: 28 } : null;
   return (
     <ScrollView
@@ -38,7 +43,7 @@ export function Screen({
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: t.background }}
-      contentContainerStyle={[{ paddingHorizontal: 16, paddingBottom: 48 }, width, contentContainerStyle]}
+      contentContainerStyle={[{ paddingHorizontal: 16, paddingBottom: 48 }, width, { paddingLeft: base + insets.left, paddingRight: base + insets.right }, contentContainerStyle]}
       {...rest}>
       {children}
     </ScrollView>

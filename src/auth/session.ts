@@ -2,6 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { GenericOAuth2, OAuth2Errors, type TokenResponse } from '../../modules/generic-oauth2';
 import { createSignal } from '@/data/store';
+import { DEMO, installDemoWorker } from '@/demo/demo';
 
 /**
  * Sign in with Google or Apple, brokered by AWS Cognito (the user pool the lore-llm
@@ -55,7 +56,19 @@ async function persist() {
   else await SecureStore.deleteItemAsync(STORE_KEY);
 }
 
+/**
+ * Debug mode: set EXPO_PUBLIC_SKIP_AUTH=1 (dev builds only) to skip sign-in.
+ * A fake local user is used; there is no token, so Worker calls are unauthenticated.
+ */
+export const SKIP_AUTH = __DEV__ && (DEMO || process.env.EXPO_PUBLIC_SKIP_AUTH === '1');
+if (DEMO) installDemoWorker();
+const DEBUG_USER: AuthUser = { id: 'debug-user', name: 'Debug User', email: null, provider: 'Google' };
+
 export async function loadSession() {
+  if (SKIP_AUTH) {
+    authUser.set(DEBUG_USER);
+    return;
+  }
   try {
     const raw = await SecureStore.getItemAsync(STORE_KEY);
     session = raw ? (JSON.parse(raw) as Session) : null;
@@ -105,6 +118,7 @@ function adopt(tok: TokenResponse, refreshToken?: string) {
  * refreshed when close to expiry. Null when signed out.
  */
 export async function idToken(): Promise<string | null> {
+  if (SKIP_AUTH) return 'debug-token';
   if (!session) return null;
   if (session.expiresAt - Date.now() > 60_000) return session.idToken;
   refreshing ??= (async () => {

@@ -1,6 +1,10 @@
 import { Platform, useWindowDimensions } from 'react-native';
 
+import { createSignal } from '@/data/store';
 import { isSplitLayout } from '@/lib/split';
+
+/** Whether the tablet sidebar is shown (the user can collapse it). */
+export const sidebarOpen = createSignal(true);
 
 export const SIDEBAR_WIDTH = 300;
 /** Reading width of documents and lists next to the sidebar, as on the desktop app. */
