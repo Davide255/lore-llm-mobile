@@ -31,6 +31,8 @@ export const routes = {
   settings: (page: 'account' | 'teams' | 'agents' | 'appearance') => `/settings/${page}` as Href,
   /** Study mode: the 3-step setup modal, and the session (questions, summary, grade). */
   studySetup: (step?: 'types' | 'criteria') => (step ? `/study-setup/${step}` : '/study-setup') as Href,
+  /** Step 1 inside a subfolder: the note picker pushed on itself, one screen per folder. */
+  studySetupFolder: (dir: string) => ({ pathname: '/study-setup/folder', params: { dir } }) as unknown as Href,
   studySession: (screen: 'generating' | 'quiz' | 'summary' | 'result') => `/study-session/${screen}` as Href,
   studyAnswer: (id: string) => ({ pathname: '/study-session/answer/[id]', params: { id } }) as unknown as Href,
   inviteMember: (teamId: string) => ({ pathname: '/invite-member', params: { teamId } }) as unknown as Href,
