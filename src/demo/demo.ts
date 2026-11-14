@@ -22,6 +22,11 @@ export function installDemoWorker() {
   worker.put('', 'Viaggio in Giappone/checklist.md', '- [x] Passaporto\n- [x] Voli\n- [ ] Hotel\n- [ ] JR Pass\n');
   worker.put('', 'Ricette/Carbonara.md', '# Carbonara\n\n**Ingredienti:** spaghetti, guanciale, uova, pecorino.\n\nNiente panna!\n');
 
+  // Notes for the Studio tab (the study mode itself is faked in study-demo.ts).
+  worker.put('', 'Analisi 1/analisi-1-limiti.md', '# Limiti\n\n## Limiti notevoli\n\nlim sin x / x = 1 per x → 0.\n\n## Condizione necessaria\n\nSe ∑ aₙ converge allora aₙ → 0 (non vale il viceversa).\n');
+  worker.put('', 'Analisi 1/serie/taylor-esercizi.md', '# Taylor\n\nSviluppi di eˣ, sin x, cos x attorno a 0.\n');
+  worker.put('', 'Analisi 1/serie/criterio-rapporto.md', '# Criterio del rapporto\n\nSia ∑ aₙ a termini positivi e L = lim aₙ₊₁/aₙ. Se L < 1 converge, se L > 1 diverge, con L = 1 non decide.\n');
+
   worker.addTeam('demo', 'Team Demo', 'owner');
   worker.put('t:demo', 'Roadmap/Q1.md', '# Roadmap Q1\n\n- Lancio app\n- Feedback utenti\n');
   worker.put('t:demo', 'Roadmap/checklist.md', '- [x] Design\n- [ ] Beta\n- [ ] Release\n');

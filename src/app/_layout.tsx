@@ -99,6 +99,8 @@ export default function RootLayout() {
                     name="move-to-team"
                     options={{ presentation: 'formSheet', headerShown: false, sheetAllowedDetents: 'fitToContents', sheetGrabberVisible: true, sheetCornerRadius: 24 }}
                   />
+                  <Stack.Screen name="study-setup" options={{ presentation: 'modal', headerShown: false }} />
+                  <Stack.Screen name="study-session" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }} />
                   <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
                   <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
                   <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />

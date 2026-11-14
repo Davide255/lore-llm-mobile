@@ -29,6 +29,10 @@ export const routes = {
   newTeam: () => '/new-team' as Href,
   /** Settings sub-pages (the Settings tab's own stack). */
   settings: (page: 'account' | 'teams' | 'agents' | 'appearance') => `/settings/${page}` as Href,
+  /** Study mode: the 3-step setup modal, and the session (questions, summary, grade). */
+  studySetup: (step?: 'types' | 'criteria') => (step ? `/study-setup/${step}` : '/study-setup') as Href,
+  studySession: (screen: 'generating' | 'quiz' | 'summary' | 'result') => `/study-session/${screen}` as Href,
+  studyAnswer: (id: string) => ({ pathname: '/study-session/answer/[id]', params: { id } }) as unknown as Href,
   inviteMember: (teamId: string) => ({ pathname: '/invite-member', params: { teamId } }) as unknown as Href,
 };
 
