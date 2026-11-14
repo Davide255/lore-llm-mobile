@@ -5,7 +5,7 @@ import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { BigButton, StatusIcon } from '@/components/study/parts';
 import { Banner, Cell, EmptyState, IconWell, ProgressBar, Screen, Section, SectionHeader } from '@/components/ui';
-import { abortSession, studySession, submitSession } from '@/data/study';
+import { abortSession, closeReview, studyReview, submitSession, useShownSession } from '@/data/study';
 import { basename } from '@/lib/paths';
 import { useCloseSession } from '@/components/study/use-close-session';
 import { routes } from '@/lib/routes';
@@ -20,14 +20,16 @@ import { useTheme, type Theme } from '@/theme';
  */
 export default function ResultScreen() {
   const t = useTheme();
-  const s = studySession.useValue();
+  const s = useShownSession();
+  const reviewing = studyReview.useValue() !== null;
   const exit = useCloseSession();
   if (!s) return <EmptyState icon="school" title="Nessuna sessione" />;
   const r = s.result;
 
   const close = () => {
+    if (reviewing) closeReview();
     // A graded session stays reachable from the tab until the next one starts.
-    if (s.phase !== 'graded') abortSession();
+    else if (s.phase !== 'graded') abortSession();
     exit();
   };
 

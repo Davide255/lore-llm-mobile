@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { Highlight, Question } from '@/api/study/types';
 import { sourceIcon, StatusIcon, TypeChip } from '@/components/study/parts';
 import { Cell, EmptyState, HeaderTitle, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
-import { studySession } from '@/data/study';
+import { useShownSession } from '@/data/study';
 import { attachmentKind } from '@/lib/attachments';
 import { basename } from '@/lib/paths';
 import { routes } from '@/lib/routes';
@@ -22,7 +22,7 @@ const LETTERS = ['A', 'B', 'C', 'D'];
 export default function AnswerDetailScreen() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const s = studySession.useValue();
+  const s = useShownSession();
   const index = s?.questions.findIndex((q) => q.id === id) ?? -1;
   const q = s?.questions[index];
   if (!s || !q) return <EmptyState icon="school" title="Domanda non trovata" />;

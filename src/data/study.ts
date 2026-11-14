@@ -4,8 +4,8 @@ import { kb } from '@/api';
 import { streamStudy } from '@/api/study/study-client';
 import type { Answer, GenerateRequest, GradeRequest, Question, QuestionResult, SessionResult, StudyEvent } from '@/api/study/types';
 import { createSignal, invalidate, useQuery } from '@/data/store';
-import { fromWire, toWire } from '@/lib/paths';
-import { effectiveMix, localDate, parseReport, type SavedReport, type StudyDraft, type StudyPreset } from '@/lib/study-model';
+import { fromWire, parseProjectKey, splitPath, toWire } from '@/lib/paths';
+import { effectiveMix, localDate, parseReport, sessionFromReport, type SavedReport, type StudyDraft, type StudyPreset } from '@/lib/study-model';
 
 /**
  * Study mode state: the setup draft, the session in progress (questions arrive
@@ -40,9 +40,20 @@ export interface StudySession {
   savedPath: string | null;
   saveError: string | null;
   error: string | null;
+  /** When the session was frozen (answering only); null or absent while running. */
+  pausedAt?: number | null;
 }
 
 export const studySession = createSignal<StudySession | null>(null);
+/** A finished session reopened from a saved report: read-only, shown by the grade and answer screens. */
+export const studyReview = createSignal<StudySession | null>(null);
+
+/** The session the grade/answer screens show: a reopened one, else the live one. */
+export function useShownSession(): StudySession | null {
+  const review = studyReview.useValue();
+  const live = studySession.useValue();
+  return review ?? live;
+}
 export const studyDraft = createSignal<StudyDraft | null>(null);
 
 let controller: AbortController | null = null;
@@ -61,6 +72,8 @@ function wireSource(path: string) {
 // ─── Generation ──────────────────────────────────────────────────────────────
 
 export function startSession(draft: StudyDraft) {
+  studyReview.set(null);
+  clearPaused();
   // The tab follows the project the report will be saved in.
   setStudyProject(draft.project);
   controller?.abort();
@@ -126,6 +139,33 @@ export function abortSession() {
   controller?.abort();
   controller = null;
   studySession.set(null);
+  clearPaused();
+}
+
+// ─── Pause ───────────────────────────────────────────────────────────────────
+
+const PAUSED_KEY = 'lore.study.paused.v1';
+
+function clearPaused() {
+  AsyncStorage.removeItem(PAUSED_KEY).catch(() => {});
+}
+
+/** Freezes the questions in progress (answers, flags, position, clock) and keeps them across app restarts. */
+export function pauseSession() {
+  const s = studySession.get();
+  if (!s || s.phase !== 'answering' || s.draft.timeLimit) return;
+  const paused = { ...s, pausedAt: Date.now() };
+  studySession.set(paused);
+  AsyncStorage.setItem(PAUSED_KEY, JSON.stringify(paused)).catch(() => {});
+}
+
+/** Unfreezes a paused session: the time away doesn't count towards the clock or the duration. */
+export function resumeSession() {
+  const s = studySession.get();
+  if (!s?.pausedAt) return;
+  const away = Date.now() - s.pausedAt;
+  update({ pausedAt: null, startedAt: s.startedAt ? s.startedAt + away : null });
+  clearPaused();
 }
 
 // ─── Answering ───────────────────────────────────────────────────────────────
@@ -151,7 +191,8 @@ export function submitSession() {
   controller = new AbortController();
   const signal = controller.signal;
   const finishedAt = s.finishedAt ?? Date.now();
-  update({ phase: 'grading', finishedAt, graded: {}, result: null, error: null, saveError: null, savedPath: null });
+  clearPaused();
+  update({ pausedAt: null, phase: 'grading', finishedAt, graded: {}, result: null, error: null, saveError: null, savedPath: null });
 
   const project = toWire(s.draft.project);
   const d = s.draft;
@@ -184,6 +225,8 @@ export function submitSession() {
     .then(() => {
       if (signal.aborted) return;
       update({ phase: 'graded' });
+      const done = studySession.get();
+      if (done) archiveSession(done);
       // The report is a new note: the folder listings and the Studio tab must see it.
       invalidate();
     })
@@ -193,6 +236,80 @@ export function submitSession() {
 }
 
 // ─── Saved reports (C3) ──────────────────────────────────────────────────────
+
+// The report note only keeps the summary (grade, criteria, status per question).
+// To reopen it with every question, answer and comment, the finished session is
+// also kept on this device, keyed by the report's path.
+const ARCHIVE_KEY = 'lore.study.archive.v1';
+const ARCHIVE_MAX = 30;
+const archiveKey = (path: string) => `${ARCHIVE_KEY}:${path}`;
+
+async function archiveSession(s: StudySession) {
+  if (!s.savedPath || !s.result) return;
+  const path = s.savedPath;
+  try {
+    const raw = await AsyncStorage.getItem(ARCHIVE_KEY);
+    const paths = [path, ...((raw ? (JSON.parse(raw) as string[]) : []).filter((p) => p !== path))];
+    const dropped = paths.slice(ARCHIVE_MAX);
+    await AsyncStorage.setItem(archiveKey(path), JSON.stringify({ ...s, error: null }));
+    await AsyncStorage.setItem(ARCHIVE_KEY, JSON.stringify(paths.slice(0, ARCHIVE_MAX)));
+    await Promise.all(dropped.map((p) => AsyncStorage.removeItem(archiveKey(p))));
+  } catch {
+    // Only the interactive review is lost: the report note is already saved.
+  }
+}
+
+/**
+ * Loads a saved report for review: this device's full copy when it has one
+ * (it keeps the underlined quotes), else rebuilt from the report note itself.
+ * False when the note isn't a readable report.
+ */
+export async function openReview(path: string): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(archiveKey(path));
+    if (raw) {
+      const s = JSON.parse(raw) as StudySession;
+      if (s.result && Array.isArray(s.questions)) {
+        studyReview.set({ ...s, phase: 'graded' });
+        return true;
+      }
+    }
+  } catch {
+    // Fall through to the note.
+  }
+  try {
+    const doc = await kb.getFile(path);
+    const [first = ''] = splitPath(path);
+    const teamId = parseProjectKey(first).teamId;
+    const rebuilt = doc ? sessionFromReport(doc.content, first, (p) => fromWire(teamId, p)) : null;
+    if (!doc || !rebuilt) return false;
+    studyReview.set({
+      phase: 'graded',
+      draft: rebuilt.draft,
+      files: [],
+      topics: rebuilt.topics,
+      questions: rebuilt.questions,
+      total: rebuilt.questions.length,
+      answers: rebuilt.answers,
+      flagged: [],
+      current: 0,
+      startedAt: null,
+      finishedAt: null,
+      graded: {},
+      result: rebuilt.result,
+      savedPath: path,
+      saveError: null,
+      error: null,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function closeReview() {
+  studyReview.set(null);
+}
 
 /** The project's sessions, read back from the reports in `<project>/studio/`, newest first. */
 export const useStudyReports = (project: string | null) =>
@@ -220,9 +337,13 @@ export async function loadStudyPrefs() {
   if (loaded) return;
   loaded = true;
   try {
-    const [project, presets] = await Promise.all([AsyncStorage.getItem(PROJECT_KEY), AsyncStorage.getItem(PRESETS_KEY)]);
+    const [project, presets, paused] = await Promise.all([AsyncStorage.getItem(PROJECT_KEY), AsyncStorage.getItem(PRESETS_KEY), AsyncStorage.getItem(PAUSED_KEY)]);
     if (project && studyProject.get() === null) studyProject.set(project);
     if (presets) studyPresets.set(JSON.parse(presets) as StudyPreset[]);
+    if (paused && studySession.get() === null) {
+      const s = JSON.parse(paused) as StudySession;
+      if (s.phase === 'answering' && Array.isArray(s.questions) && s.questions.length) studySession.set(s);
+    }
   } catch {
     // Preferences are a convenience: start from defaults.
   }

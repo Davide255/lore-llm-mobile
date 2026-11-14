@@ -9,7 +9,7 @@ import { SetupTitle } from '@/components/study/setup-header';
 import { Cell, EmptyState, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { studyDraft } from '@/data/study';
 import { routes } from '@/lib/routes';
-import { DIFFICULTY_LABELS, estimatedMinutes, MAX_PER_TYPE, stepError, totalQuestions, TYPE_LABELS } from '@/lib/study-model';
+import { DIFFICULTY_LABELS, estimatedMinutes, MAX_PER_TYPE, MAX_TIME_LIMIT, MIN_TIME_LIMIT, stepError, timeLimitMinutes, totalQuestions, TYPE_LABELS } from '@/lib/study-model';
 import { brand, useTheme } from '@/theme';
 
 const SUBTITLES: Record<QuestionType, string> = {
@@ -86,9 +86,31 @@ export default function QuestionTypesScreen() {
           />
           <Cell
             title="Limite di tempo"
-            subtitle={draft.timeLimit ? `${estimatedMinutes(draft)} minuti, poi si va al riepilogo` : 'Nessun limite'}
-            right={<Switch value={draft.timeLimit} onValueChange={toggle('timeLimit')} {...switchProps} />}
+            subtitle={draft.timeLimit ? 'Scaduto il tempo si va al riepilogo; niente pausa' : 'Nessun limite'}
+            right={
+              <Switch
+                value={draft.timeLimit}
+                onValueChange={(on) => studyDraft.set({ ...draft, timeLimit: on, ...(on ? { timeLimitMin: timeLimitMinutes(draft) } : {}) })}
+                {...switchProps}
+              />
+            }
           />
+          {draft.timeLimit ? (
+            <Cell
+              title="Durata"
+              subtitle={`Per ${total} domande ne servono circa ${estimatedMinutes(draft)}`}
+              right={
+                <Stepper
+                  value={timeLimitMinutes(draft)}
+                  min={MIN_TIME_LIMIT}
+                  max={MAX_TIME_LIMIT}
+                  step={5}
+                  suffix=" min"
+                  onChange={(n) => studyDraft.set({ ...draft, timeLimitMin: n })}
+                />
+              }
+            />
+          ) : null}
         </Section>
         <View style={{ height: 24 }} />
       </Screen>

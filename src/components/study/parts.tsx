@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Keyboard, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { QuestionResult, QuestionType } from '@/api/study/types';
@@ -99,6 +99,17 @@ export function BigButton({
 export function FooterBar({ children }: { children: ReactNode }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  // The buttons give way to the keyboard (its return key closes it and brings them back).
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  if (keyboardUp) return null;
   return (
     <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: t.background, borderTopColor: t.hairline }]}>{children}</View>
   );

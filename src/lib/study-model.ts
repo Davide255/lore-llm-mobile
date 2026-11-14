@@ -3,7 +3,7 @@
  * the setup draft and its validation, criteria weights, the summary grid,
  * and reading back the reports the server saves in `<project>/studio/`.
  */
-import type { Answer, Criterion, Difficulty, Question, QuestionType, ReportData, Scale } from '@/api/study/types';
+import type { Answer, Criterion, Difficulty, Question, QuestionResult, QuestionType, ReportData, Scale, SessionResult } from '@/api/study/types';
 
 export interface StudyDraft {
   /** App project key (`Name` or `Name@teamId`): where the report is saved. */
@@ -17,6 +17,8 @@ export interface StudyDraft {
   correctionAtEnd: boolean;
   citeSource: boolean;
   timeLimit: boolean;
+  /** The limit in minutes, chosen by the user; absent in older drafts (then the estimate is used). */
+  timeLimitMin?: number;
   instructions: string;
   criteria: Criterion[];
   scale: Scale;
@@ -76,6 +78,15 @@ export function totalQuestions(d: Pick<StudyDraft, 'counts' | 'enabled'>): numbe
 export function estimatedMinutes(d: Pick<StudyDraft, 'counts' | 'enabled'>): number {
   const m = effectiveMix(d);
   return Math.round(m.mc + m.tf + m.open * 3.5);
+}
+
+export const MIN_TIME_LIMIT = 5;
+export const MAX_TIME_LIMIT = 180;
+
+/** The session's time limit in minutes: the user's choice, else the estimate rounded to 5 minutes. */
+export function timeLimitMinutes(d: Pick<StudyDraft, 'counts' | 'enabled' | 'timeLimitMin'>): number {
+  const n = d.timeLimitMin ?? Math.round(estimatedMinutes(d) / 5) * 5;
+  return Math.max(MIN_TIME_LIMIT, Math.min(MAX_TIME_LIMIT, n));
 }
 
 export function weightSum(criteria: Criterion[]): number {
@@ -235,4 +246,154 @@ export function answerScore(scores: Record<string, number> | undefined, criteria
   const w = weightSum(criteria);
   if (!w) return null;
   return Math.round((criteria.reduce((s, c) => s + c.weight * (scores[c.id] ?? 0), 0) / w) * 10) / 10;
+}
+
+/** A finished session rebuilt from its saved report note (what the grade and answer screens show). */
+export interface ReportSession {
+  draft: StudyDraft;
+  topics: string[];
+  questions: Question[];
+  answers: Record<string, Answer>;
+  result: SessionResult;
+}
+
+const NO_ANSWER = '_Nessuna risposta_';
+const FIELD = /^\*\*(Risposta|Soluzione|Punti attesi|Commento|Punteggio):\*\*\s?(.*)$/;
+const SOURCE = /^Fonte: \[\[(.+?)\]\](?: · (.*))?$/;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The inverse of the server's renderReport: rebuilds the session from the note's
+ * text plus its lore-study block, so a report saved on another device (or before
+ * this device kept its own copy) opens like a fresh result. What the note doesn't
+ * keep is lost: the underlined quotes of an open answer and the source excerpts.
+ * Null when the note isn't a report or its questions don't match the data block.
+ * `mapPath` turns the server's paths into the app's.
+ */
+export function sessionFromReport(markdown: string, project: string, mapPath: (wirePath: string) => string): ReportSession | null {
+  const data = parseReport(markdown);
+  if (!data) return null;
+  const lines = markdown.slice(0, markdown.indexOf('```' + REPORT_FENCE)).split('\n');
+  const qStart = lines.findIndex((l) => l === '## Domande');
+  if (qStart < 0) return null;
+  const head = lines.slice(0, qStart);
+
+  // «**24/30** — headline», then the subline on the next paragraph.
+  const gradeAt = head.findIndex((l) => l.startsWith('**') && l.includes('** — '));
+  const subline = head.slice(gradeAt + 1).find((l) => l.trim() !== '') ?? '';
+
+  const critAt = head.indexOf('## Criteri');
+  const crits: { note: string }[] = [];
+  if (critAt >= 0) {
+    for (const l of head.slice(critAt + 1)) {
+      const m = l.match(/^- \*\*(.+?)\*\* · \d+% — (?:—|[\d.,]+)\/10(?:\. (.*))?$/);
+      if (m) crits.push({ note: m[2] ?? '' });
+      else if (l.startsWith('>')) break;
+    }
+  }
+  const criteria = data.criteria.map((c, i) => ({ id: `c${i}`, name: c.name, weight: c.weight, score: c.score, note: crits[i]?.note ?? '' }));
+
+  // One block per «### N. ✅ prompt».
+  const blocks: { prompt: string; body: string[] }[] = [];
+  for (const l of lines.slice(qStart + 1)) {
+    const h = l.match(/^### \d+\. \S+ (.*)$/);
+    if (h) blocks.push({ prompt: h[1]!, body: [] });
+    else blocks.at(-1)?.body.push(l);
+  }
+  if (blocks.length !== data.questions.length) return null;
+
+  const questions: Question[] = [];
+  const answers: Record<string, Answer> = {};
+  const results: QuestionResult[] = [];
+
+  blocks.forEach((b, i) => {
+    const meta = data.questions[i]!;
+    // A prompt can run over several lines, up to the blank one.
+    let at = 0;
+    let prompt = b.prompt;
+    while (at < b.body.length && b.body[at]!.trim() !== '') prompt += '\n' + b.body[at++];
+
+    const options: { text: string; correct: boolean }[] = [];
+    const fields: Record<string, string[]> = {};
+    let source: { path: string; locator: string } | null = null;
+    let field = '';
+    for (const l of b.body.slice(at)) {
+      const f = l.match(FIELD);
+      const src = l.match(SOURCE);
+      if (f) {
+        field = f[1]!;
+        fields[field] = [f[2]!];
+      } else if (src) {
+        field = '';
+        source = { path: src[1]!, locator: src[2] ?? '' };
+      } else if (field) fields[field]!.push(l);
+      else {
+        const o = l.match(/^[A-D]\. (.*?)( ✓)?$/);
+        if (o) options.push({ text: o[1]!, correct: !!o[2] });
+      }
+    }
+    const get = (k: string) => (fields[k] ?? []).join('\n').trim();
+
+    const base = { id: meta.id, topic: meta.topic, prompt: prompt.trim(), source: source ? { path: mapPath(source.path), locator: source.locator, excerpt: '' } : null };
+    const given = get('Risposta');
+    const answered = given !== '' && given !== NO_ANSWER;
+    let q: Question;
+    if (meta.type === 'mc') {
+      q = { ...base, type: 'mc', options: options.map((o) => o.text), correctIndex: Math.max(0, options.findIndex((o) => o.correct)), explanation: get('Soluzione') };
+      const letter = answered ? 'ABCD'.indexOf(given[0]!) : -1;
+      if (letter >= 0) answers[meta.id] = { choice: letter };
+    } else if (meta.type === 'tf') {
+      const solution = get('Soluzione');
+      q = { ...base, type: 'tf', correct: solution.startsWith('Vero'), explanation: solution.replace(/^(Vero|Falso)\. ?/, '') };
+      const value = given.startsWith('Vero') ? true : given.startsWith('Falso') ? false : undefined;
+      if (answered && value !== undefined) {
+        const motivation = given.replace(/^(Vero|Falso)( — )?/, '').trim();
+        answers[meta.id] = { value, ...(motivation ? { motivation } : {}) };
+      }
+    } else {
+      q = { ...base, type: 'open', expectedPoints: get('Punti attesi').split('\n').map((p) => p.replace(/^- /, '').trim()).filter(Boolean) };
+      if (answered) answers[meta.id] = { text: given };
+    }
+    questions.push(q);
+
+    const scoreLine = get('Punteggio');
+    const criterionScores: Record<string, number> = {};
+    criteria.forEach((c) => {
+      const m = scoreLine.match(new RegExp(`${escapeRegExp(c.name)} (\\d+(?:[.,]\\d+)?)`));
+      if (m) criterionScores[c.id] = Number(m[1]!.replace(',', '.'));
+    });
+    const comment = get('Commento');
+    results.push({
+      questionId: meta.id,
+      status: meta.status as QuestionResult['status'],
+      score: meta.score,
+      ...(Object.keys(criterionScores).length ? { criterionScores } : {}),
+      ...(comment ? { comment } : {}),
+    });
+  });
+
+  const draft: StudyDraft = {
+    ...defaultDraft(project),
+    sources: data.sources.map(mapPath),
+    criteria: criteria.map((c) => ({ id: c.id, name: c.name, description: '', weight: c.weight })),
+    scale: data.scale,
+    ...(data.preset ? { presetName: data.preset } : {}),
+  };
+  const result: SessionResult = {
+    grade: data.grade,
+    scale: data.scale,
+    headline: data.headline,
+    subline,
+    closedCorrect: data.closedCorrect,
+    closedTotal: data.closedTotal,
+    openAverage: data.openAverage,
+    durationSec: data.durationSec,
+    criteria,
+    questions: results,
+    topics: data.topics,
+  };
+  return { draft, topics: data.topics, questions, answers, result };
 }

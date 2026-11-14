@@ -13,6 +13,7 @@ import {
   moveItem,
   parseReport,
   rebalance,
+  sessionFromReport,
   stepError,
   studyKind,
   totalQuestions,
@@ -131,5 +132,111 @@ describe('reports', () => {
   it('keeps the last five sessions, oldest first', () => {
     const rs = ['10', '11', '12', '13', '14', '09'].map((d) => ({ path: `P/studio/2026-11-${d}-x.md`, data: parseReport(report(`2026-11-${d}`, d))! }));
     assert.deepEqual(trend(rs).map((r) => r.data.date.slice(-2)), ['10', '11', '12', '13', '14']);
+  });
+});
+
+describe('sessionFromReport', () => {
+  const data = {
+    v: 1,
+    date: '2026-11-14',
+    grade: { label: '17', suffix: '/30', fraction: 0.57 },
+    scale: '30',
+    headline: 'Basi parziali',
+    topics: ['Gibbs'],
+    closedCorrect: 1,
+    closedTotal: 2,
+    openAverage: 6,
+    durationSec: 600,
+    criteria: [
+      { name: 'Rigore', weight: 60, score: 6 },
+      { name: 'Chiarezza', weight: 40, score: 7.5 },
+    ],
+    questions: [
+      { id: 'q1', type: 'mc', topic: 'Gibbs', status: 'correct', score: 1 },
+      { id: 'q2', type: 'tf', topic: 'Gibbs', status: 'wrong', score: 0 },
+      { id: 'q3', type: 'open', topic: 'Gibbs', status: 'partial', score: 0.6 },
+    ],
+    sources: ['Chimica/5. Termodinamica.md'],
+  };
+  const note = [
+    '# Sessione di studio · 2026-11-14',
+    '',
+    '**17 su 30** — Basi parziali',
+    '',
+    'Hai capito il criterio, ma manca rigore.',
+    '',
+    '- Argomenti: Gibbs',
+    '',
+    '## Criteri',
+    '',
+    '- **Rigore** · 60% — 6/10. Definizione incompleta',
+    '- **Chiarezza** · 40% — 7.5/10',
+    '',
+    '## Domande',
+    '',
+    '### 1. ✅ Quale grandezza è ΔG?',
+    '',
+    'A. Energia libera ✓',
+    'B. Entropia',
+    '',
+    '**Risposta:** A. Energia libera',
+    '',
+    '**Soluzione:** ΔG = ΔH - TΔS.',
+    '',
+    'Fonte: [[Chimica/5. Termodinamica.md]] · Gibbs',
+    '',
+    '### 2. ❌ ΔG > 0 è spontanea.',
+    '',
+    '**Risposta:** Vero — perché sì',
+    '',
+    '**Soluzione:** Falso. Spontanea se ΔG < 0.',
+    '',
+    '### 3. 🟡 Definisci Gibbs.',
+    '',
+    '**Risposta:** ΔG = ΔH - TΔS',
+    '',
+    'e basta.',
+    '',
+    '**Punti attesi:**',
+    '- Formula',
+    '- Segno',
+    '',
+    '**Commento:** Manca il segno.',
+    '',
+    '**Punteggio:** Rigore 5 · Chiarezza 8',
+    '',
+    '```lore-study',
+    JSON.stringify(data),
+    '```',
+    '',
+  ].join('\n');
+
+  it('rebuilds questions, answers, comments and scores from the note', () => {
+    const r = sessionFromReport(note, 'Chimica', (p) => `app/${p}`)!;
+    assert.ok(r);
+    assert.equal(r.questions.length, 3);
+    const [mc, tf, open] = r.questions;
+    assert.deepEqual(mc, {
+      id: 'q1', topic: 'Gibbs', prompt: 'Quale grandezza è ΔG?', type: 'mc', options: ['Energia libera', 'Entropia'], correctIndex: 0,
+      explanation: 'ΔG = ΔH - TΔS.', source: { path: 'app/Chimica/5. Termodinamica.md', locator: 'Gibbs', excerpt: '' },
+    });
+    assert.equal(tf!.type === 'tf' && tf!.correct, false);
+    assert.equal(tf!.type === 'tf' && tf!.explanation, 'Spontanea se ΔG < 0.');
+    assert.deepEqual(open!.type === 'open' && open!.expectedPoints, ['Formula', 'Segno']);
+    assert.deepEqual(r.answers, {
+      q1: { choice: 0 },
+      q2: { value: true, motivation: 'perché sì' },
+      q3: { text: 'ΔG = ΔH - TΔS\n\ne basta.' },
+    });
+    assert.equal(r.result.subline, 'Hai capito il criterio, ma manca rigore.');
+    assert.equal(r.result.criteria[0]!.note, 'Definizione incompleta');
+    assert.deepEqual(r.result.questions[2], { questionId: 'q3', status: 'partial', score: 0.6, criterionScores: { c0: 5, c1: 8 }, comment: 'Manca il segno.' });
+    assert.deepEqual(r.draft.sources, ['app/Chimica/5. Termodinamica.md']);
+  });
+
+  it('is null for other notes and for mismatching data', () => {
+    assert.equal(sessionFromReport('# Appunti', 'Chimica', (p) => p), null);
+    const fewer = note.replace('### 3. 🟡 Definisci Gibbs.', '').replace(/\*\*Punti attesi[\s\S]*?\n\n```lore/, '```lore');
+    assert.equal(sessionFromReport(fewer, 'Chimica', (p) => p), null);
   });
 });

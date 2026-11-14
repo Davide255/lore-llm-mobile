@@ -7,7 +7,7 @@ import { HeaderItems } from '@/components/header-items';
 import { BigButton } from '@/components/study/parts';
 import { Banner, Cell, IconWell, Screen, Section, SectionHeader } from '@/components/ui';
 import { useProjects } from '@/data/hooks';
-import { loadStudyPrefs, setStudyProject, studyDraft, studyProject, studySession, useStudyReports } from '@/data/study';
+import { loadStudyPrefs, openReview, resumeSession, setStudyProject, studyDraft, studyProject, studySession, useStudyReports } from '@/data/study';
 import { basename } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { dayLabel, defaultDraft, gradeText, trend, type SavedReport } from '@/lib/study-model';
@@ -82,9 +82,12 @@ export default function StudyScreen() {
             <Cell
               icon={<IconWell name="school" />}
               title={inProgress.phase === 'generating' ? 'Sto preparando le domande' : `${inProgress.questions.length} domande`}
-              subtitle={phaseText(inProgress.phase)}
+              subtitle={inProgress.pausedAt ? 'In pausa · tocca per riprendere' : phaseText(inProgress.phase)}
               chevron
-              onPress={() => router.push(routes.studySession(resumeScreen(inProgress.phase)))}
+              onPress={() => {
+                resumeSession();
+                router.push(routes.studySession(resumeScreen(inProgress.phase)));
+              }}
             />
           </Section>
         ) : null}
@@ -106,7 +109,11 @@ export default function StudyScreen() {
                 mono
                 subtitle={`${gradeText(r.data.grade)} · ${r.data.headline} · ${dayLabel(r.data.date)}`}
                 chevron
-                onPress={() => router.push(routes.file(r.path))}
+                onPress={async () => {
+                  // The full session when this device has it, else the report note.
+                  if (await openReview(r.path)) router.push(routes.studySession('result'));
+                  else router.push(routes.file(r.path));
+                }}
               />
             ))}
           </Section>
