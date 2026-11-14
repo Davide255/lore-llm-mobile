@@ -10,6 +10,7 @@ import { BigButton, FooterBar, SessionProgress, SourceLine, TypeChip } from '@/c
 import { EmptyState, HeaderTitle } from '@/components/ui';
 import { abortSession, goTo, pauseSession, setAnswer, studySession, toggleFlag } from '@/data/study';
 import { useCloseSession } from '@/components/study/use-close-session';
+import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
 import { closedOutcome, timeLimitMinutes, wordCount } from '@/lib/study-model';
 import { useTheme } from '@/theme';
@@ -113,7 +114,11 @@ export default function QuizScreen() {
           ) : (
             <OpenAnswer key={q.id} q={q} answer={answer} onFocusChange={setTyping} insertRef={insertRef} onCaret={followCaret} />
           )}
-          <Pressable onPress={() => toggleFlag(q.id)} style={styles.flag} accessibilityRole="button" accessibilityState={{ selected: flagged }}>
+          <Pressable
+            onPress={() => {
+              haptic.light();
+              toggleFlag(q.id);
+            }} style={styles.flag} accessibilityRole="button" accessibilityState={{ selected: flagged }}>
             <Icon name={flagged ? 'flagFill' : 'flag'} size={16} color={flagged ? t.warning : t.textSecondary} />
             <Text style={{ color: flagged ? t.warning : t.textSecondary, fontSize: 14.5 }}>{flagged ? 'Da rivedere' : 'Segna per rivedere'}</Text>
           </Pressable>
@@ -173,7 +178,10 @@ function MultipleChoice({ q, answer, reveal }: { q: Extract<Question, { type: 'm
       {q.options.map((o, i) => {
         const selected = answer?.choice === i;
         const state = outcome === null ? null : i === q.correctIndex ? 'right' : selected ? 'wrong' : null;
-        return <Choice key={i} letter={LETTERS[i]} label={o} selected={selected} state={state} onPress={() => setAnswer(q.id, { choice: i })} />;
+        return <Choice key={i} letter={LETTERS[i]} label={o} selected={selected} state={state} onPress={() => {
+              haptic.select();
+              setAnswer(q.id, { choice: i });
+            }} />;
       })}
       {outcome !== null ? <Explanation text={q.explanation} /> : null}
     </View>
@@ -203,7 +211,10 @@ function TrueFalse({
         {[true, false].map((v) => (
           <Pressable
             key={String(v)}
-            onPress={() => setAnswer(q.id, { value: v })}
+            onPress={() => {
+              haptic.select();
+              setAnswer(q.id, { value: v });
+            }}
             accessibilityRole="radio"
             accessibilityState={{ selected: answer?.value === v }}
             style={[

@@ -22,14 +22,140 @@ export interface StudyDraft {
   instructions: string;
   criteria: Criterion[];
   scale: Scale;
+  /** The grading profile's name, sent with the hand-in and written in the report. */
   presetName?: string;
+  /** The grading profile chosen in A4; its fields are copied into the draft. */
+  profileId?: string;
 }
 
+/** Criteria presets of the first Studio release, migrated into profiles. */
 export interface StudyPreset {
   name: string;
   instructions: string;
   criteria: Criterion[];
   scale: Scale;
+}
+
+// ─── Grading profiles (A4 / A5) ──────────────────────────────────────────────
+
+export type ProfileIcon = 'gavel' | 'heart' | 'document' | 'school' | 'bulb' | 'science' | 'book' | 'voice';
+
+export interface StudyProfile {
+  id: string;
+  name: string;
+  icon: ProfileIcon;
+  /** How the AI grades, in the user's words (also sent to question generation). */
+  instructions: string;
+  criteria: Criterion[];
+  scale: Scale;
+  /** Off: closed questions show right/wrong as soon as they are answered. */
+  correctionAtEnd: boolean;
+}
+
+export const PROFILE_ICONS: ProfileIcon[] = ['gavel', 'heart', 'document', 'school', 'bulb', 'science', 'book', 'voice'];
+export const MAX_PROFILES = 20;
+
+const crit = (...list: [string, string, number][]): Criterion[] =>
+  list.map(([name, description, weight]) => ({ id: slug(name), name, description, weight }));
+
+export const DEFAULT_PROFILES: StudyProfile[] = [
+  {
+    id: 'orale',
+    name: 'Orale severo',
+    icon: 'gavel',
+    instructions: 'Severo come all’orale. Penalizza i teoremi enunciati senza ipotesi e le definizioni approssimative. Voto in trentesimi, correzione alla fine.',
+    criteria: crit(['Rigore', 'Definizioni e ipotesi esatte', 40], ['Completezza', 'Tutti i passaggi richiesti', 30], ['Chiarezza', 'Esposizione ordinata', 20], ['Esempi', 'Controesempi pertinenti', 10]),
+    scale: '30',
+    correctionAtEnd: true,
+  },
+  {
+    id: 'coach',
+    name: 'Coach gentile',
+    icon: 'heart',
+    instructions: 'Incoraggia e segnala solo l’essenziale: cosa manca per arrivare alla risposta giusta. Voto in decimi, correggi dopo ogni domanda.',
+    criteria: crit(['Comprensione', 'Ha capito il concetto', 60], ['Chiarezza', 'Si spiega in modo ordinato', 40]),
+    scale: '10',
+    correctionAtEnd: false,
+  },
+  {
+    id: 'scritto',
+    name: 'Scritto d’esame',
+    icon: 'document',
+    instructions: 'Conta ogni passaggio, come in uno scritto: un risultato senza svolgimento vale poco. Voto in trentesimi, correzione alla fine.',
+    criteria: crit(['Correttezza', 'Risultati e passaggi giusti', 50], ['Completezza', 'Tutti i passaggi richiesti', 30], ['Rigore', 'Notazione e ipotesi esatte', 20]),
+    scale: '30',
+    correctionAtEnd: true,
+  },
+];
+
+/** «Severo come all’orale · /30»: the first sentence of the instructions and the scale. */
+export function profileSubtitle(p: Pick<StudyProfile, 'instructions' | 'scale'>): string {
+  const first = p.instructions.trim().split(/(?<=[.!?])\s/)[0]?.replace(/[.!?]$/, '') ?? '';
+  const scale = p.scale === 'judgement' ? 'a giudizio' : SCALE_LABELS[p.scale];
+  return first ? `${first} · ${scale}` : `Voto ${scale}`;
+}
+
+/**
+ * The scale and the correction mode, read from a profile's instructions (the
+ * editor has no switches for them): «/10», «in decimi», «in percentuale», «a
+ * giudizio»; «dopo ogni domanda», «subito». Defaults: /30, at the end.
+ */
+export function gradingFromInstructions(text: string): Pick<StudyProfile, 'scale' | 'correctionAtEnd'> {
+  const s = text.toLowerCase();
+  const scale: Scale = /\/\s*10\b|\bdecim|\bsu 10\b/.test(s)
+    ? '10'
+    : /\/\s*30\b|trentesim|\bsu 30\b/.test(s)
+      ? '30'
+      : /%|percentual|per cento/.test(s)
+        ? 'percent'
+        : /giudizi/.test(s)
+          ? 'judgement'
+          : '30';
+  const immediate = /dopo ogni (domanda|risposta)|\bsubito\b|man mano|correzione immediata/.test(s);
+  return { scale, correctionAtEnd: !immediate };
+}
+
+/** Why a profile can't be saved yet, or null. */
+export function profileError(p: StudyProfile): string | null {
+  if (!p.name.trim()) return 'Dai un nome al profilo';
+  if (p.criteria.some((c) => !c.name.trim())) return 'Ogni criterio ha bisogno di un nome';
+  if (p.criteria.length && Math.round(weightSum(p.criteria)) !== 100) return `I pesi devono fare 100% (ora ${Math.round(weightSum(p.criteria))}%)`;
+  return null;
+}
+
+/** The draft graded by `p`: its instructions, criteria, scale and correction mode. */
+export function applyProfile(d: StudyDraft, p: StudyProfile): StudyDraft {
+  return {
+    ...d,
+    profileId: p.id,
+    presetName: p.name,
+    instructions: p.instructions,
+    criteria: p.criteria.map((c) => ({ ...c })),
+    scale: p.scale,
+    correctionAtEnd: p.correctionAtEnd,
+  };
+}
+
+export function newProfileId(existing: { id: string }[], name: string): string {
+  const base = slug(name) || 'profilo';
+  let id = base;
+  for (let n = 2; existing.some((p) => p.id === id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+/** Old presets become profiles (once): same name, criteria and scale. */
+export function profileFromPreset(p: StudyPreset, existing: { id: string }[]): StudyProfile {
+  return { id: newProfileId(existing, p.name), name: p.name, icon: 'school', instructions: p.instructions, criteria: p.criteria, scale: p.scale, correctionAtEnd: true };
+}
+
+function slug(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 24);
 }
 
 export const MAX_PER_TYPE = 20;
@@ -396,4 +522,100 @@ export function sessionFromReport(markdown: string, project: string, mapPath: (w
     topics: data.topics,
   };
   return { draft, topics: data.topics, questions, answers, result };
+}
+
+// ─── Studio tab (A1): progress read back from the saved reports ──────────────
+
+function shiftDay(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return localDate(new Date(y!, m! - 1, d! + days));
+}
+
+/** Days in a row with at least one session, ending today (or yesterday: today's still open). */
+export function streakDays(dates: string[], now = new Date()): number {
+  const days = new Set(dates);
+  const today = localDate(now);
+  let day = days.has(today) ? today : shiftDay(today, -1);
+  let n = 0;
+  while (days.has(day)) {
+    n++;
+    day = shiftDay(day, -1);
+  }
+  return n;
+}
+
+export interface WeekDay {
+  label: string;
+  date: string;
+  done: boolean;
+  today: boolean;
+  future: boolean;
+}
+
+/** Monday to Sunday of this week, with the days that had a session. */
+export function thisWeek(dates: string[], now = new Date()): WeekDay[] {
+  const days = new Set(dates);
+  const today = localDate(now);
+  const monday = shiftDay(today, -((now.getDay() + 6) % 7));
+  return ['L', 'M', 'M', 'G', 'V', 'S', 'D'].map((label, i) => {
+    const date = shiftDay(monday, i);
+    return { label, date, done: days.has(date), today: date === today, future: date > today };
+  });
+}
+
+export interface TopicMastery {
+  topic: string;
+  /** 0…1: the mean score of its questions, the latest sessions counting more. */
+  score: number;
+  questions: number;
+}
+
+/** How each topic is going across the saved sessions, weakest first. */
+export function topicMastery(reports: SavedReport[]): TopicMastery[] {
+  const byTopic = new Map<string, { sum: number; weight: number; questions: number }>();
+  // Oldest first: each newer session weighs a bit more than the one before.
+  [...reports]
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .forEach((r, i) => {
+      const w = 1 + i * 0.5;
+      for (const q of r.data.questions) {
+        const topic = q.topic?.trim();
+        if (!topic) continue;
+        const t = byTopic.get(topic) ?? { sum: 0, weight: 0, questions: 0 };
+        t.sum += q.score * w;
+        t.weight += w;
+        t.questions++;
+        byTopic.set(topic, t);
+      }
+    });
+  return [...byTopic.entries()].map(([topic, t]) => ({ topic, score: t.sum / t.weight, questions: t.questions })).sort((a, b) => a.score - b.score);
+}
+
+export function masteryLabel(score: number): string {
+  if (score >= 0.8) return 'Padroneggiato';
+  if (score >= 0.5) return 'In crescita';
+  return 'Da rinforzare';
+}
+
+/** 0…1: the mean of the last three grades (how ready the notes look). */
+export function readiness(reports: SavedReport[]): number | null {
+  const last = trend(reports, 3);
+  if (!last.length) return null;
+  return last.reduce((s, r) => s + r.data.grade.fraction, 0) / last.length;
+}
+
+/** The coach's line under the hero: progress in the user's own numbers, or null. */
+export function coachMessage(reports: SavedReport[], topics: TopicMastery[]): string | null {
+  const recent = trend(reports, 5);
+  if (recent.length >= 2) {
+    const first = recent[0]!.data.grade;
+    const last = recent.at(-1)!.data.grade;
+    const weakest = topics[0];
+    const focus = weakest && weakest.score < 0.6 ? ` Oggi conviene insistere su ${weakest.topic}.` : '';
+    if (last.fraction > first.fraction + 0.02) return `In ${recent.length} sessioni sei passato da ${gradeText(first)} a ${gradeText(last)}.${focus}`;
+    if (last.fraction < first.fraction - 0.02) return `L’ultima è andata meno bene (${gradeText(last)}): niente panico, si recupera ripassando.${focus}`;
+    return `Stabile su ${gradeText(last)}.${focus || ' Prova a spingere un po’ di più.'}`;
+  }
+  if (recent.length === 1) return `Prima sessione: ${gradeText(recent[0]!.data.grade)}. Da qui si misura il progresso.`;
+  return null;
 }

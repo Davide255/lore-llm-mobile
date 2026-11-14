@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { QuestionResult, QuestionType } from '@/api/study/types';
 import { Icon, type IconName } from '@/components/icon';
 import { IconWell } from '@/components/ui';
+import { haptic } from '@/lib/haptics';
 import { studyKind, TYPE_LABELS } from '@/lib/study-model';
 import { brand, useTheme } from '@/theme';
 
@@ -40,7 +41,10 @@ export function Stepper({
     const off = disabled || next < min || next > max;
     return (
       <Pressable
-        onPress={() => onChange(next)}
+        onPress={() => {
+          haptic.select();
+          onChange(next);
+        }}
         disabled={off}
         hitSlop={6}
         accessibilityRole="button"
@@ -66,18 +70,23 @@ export function Stepper({
 export function BigButton({
   label,
   icon,
+  trailingIcon,
   onPress,
   disabled,
   busy,
   variant = 'primary',
+  silent,
   style,
 }: {
   label: string;
   icon?: IconName;
+  trailingIcon?: IconName;
   onPress: () => void;
   disabled?: boolean;
   busy?: boolean;
   variant?: 'primary' | 'tinted' | 'plain';
+  /** The caller plays its own haptic (e.g. a success on hand-in). */
+  silent?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
@@ -85,12 +94,20 @@ export function BigButton({
   const fg = variant === 'primary' ? (disabled ? t.textMuted : '#fff') : t.accentText;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        if (silent) {
+          // The caller plays its own feedback.
+        } else if (variant === 'primary') haptic.tap();
+        else haptic.light();
+        onPress();
+      }}
       disabled={disabled || busy}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.big, { backgroundColor: bg, opacity: pressed ? 0.85 : 1 }, style]}>
+      accessibilityState={{ disabled: disabled || busy }}
+      style={({ pressed }) => [[styles.big, { backgroundColor: bg }, style], pressed && { opacity: 0.85 }]}>
       {busy ? <ActivityIndicator color={fg} /> : icon ? <Icon name={icon} size={17} color={fg} weight="semibold" /> : null}
       <Text style={{ color: fg, fontSize: 16, fontWeight: '600', letterSpacing: -0.2 }}>{label}</Text>
+      {trailingIcon && !busy ? <Icon name={trailingIcon} size={17} color={fg} weight="semibold" /> : null}
     </Pressable>
   );
 }

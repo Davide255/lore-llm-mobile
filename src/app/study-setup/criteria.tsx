@@ -1,162 +1,156 @@
-import { SegmentedControl } from '@expo/ui/community/segmented-control';
-import { router, useNavigation } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, Stack, useNavigation } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, LinearTransition } from 'react-native-reanimated';
 
-import type { Scale } from '@/api/study/types';
 import { showActionSheet } from '@/components/action-sheet';
-import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
-import { CriteriaList } from '@/components/study/criteria-list';
-import { SetupTitle } from '@/components/study/setup-header';
-import { Cell, EmptyState, IconWell, Pill, Screen, Section, SectionHeader } from '@/components/ui';
-import { savePreset, startSession, studyDraft, studyPresets, deletePreset } from '@/data/study';
+import { BigButton, FooterBar } from '@/components/study/parts';
+import { choiceCardStyle, ProfileAvatar, StepProgress } from '@/components/study/profile-parts';
+import { EmptyState, Screen } from '@/components/ui';
+import { deleteProfile, saveProfile, startSession, studyDraft, studyProfiles } from '@/data/study';
+import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
-import { addCriterion, effectiveMix, MAX_CRITERIA, rebalance, SCALE_LABELS, stepError, weightSum } from '@/lib/study-model';
+import { applyProfile, MAX_PROFILES, newProfileId, profileSubtitle, stepError, type StudyProfile } from '@/lib/study-model';
 import { useTheme } from '@/theme';
 
-const SCALES: Scale[] = ['30', '10', 'percent', 'judgement'];
-
 /**
- * A4 — Step 3 of 3: how to be graded. Free instructions on top, then the
- * weighted criteria (they apply to open answers and true/false motivations;
- * closed answers grade themselves), the scale, and presets kept on the device.
+ * A4 — Step 3 of 3: who grades. A profile carries the instructions, the
+ * weighted criteria, the scale and the correction mode; the chosen one shows
+ * its weights. Profiles are edited or created in A5 (also from Settings).
  */
-export default function CriteriaScreen() {
+export default function ChooseProfileScreen() {
   const t = useTheme();
   const draft = studyDraft.useValue();
-  const presets = studyPresets.useValue();
+  const profiles = studyProfiles.useValue();
   const navigation = useNavigation();
-  const [naming, setNaming] = useState<string | null>(null);
   if (!draft) return <EmptyState icon="school" title="Nessuna sessione da preparare" />;
 
-  const error = stepError(draft, 'criteria');
-  const sum = Math.round(weightSum(draft.criteria));
-  const open = effectiveMix(draft).open;
+  const chosen = profiles.find((p) => p.id === draft.profileId) ?? profiles[0];
+  const graded = chosen ? applyProfile(draft, chosen) : null;
+  const error = !graded ? 'Crea un profilo per farti valutare' : stepError(graded, 'criteria');
 
   const start = () => {
-    startSession(draft);
+    if (!graded || error) return;
+    startSession(graded);
     // Close the setup modal as a whole (its steps are a nested stack), then open the session:
     // closing the session later lands on the tab, not back on step 1.
     navigation.getParent()?.goBack();
     router.push(routes.studySession('generating'));
   };
 
-  const confirmPreset = () => {
-    const name = naming?.trim();
-    if (!name) return;
-    savePreset({ name, instructions: draft.instructions, criteria: draft.criteria, scale: draft.scale });
-    studyDraft.set({ ...draft, presetName: name });
-    setNaming(null);
-  };
+  const more = (p: StudyProfile) =>
+    showActionSheet({
+      title: p.name,
+      options: [
+        { label: 'Modifica', icon: 'edit', onPress: () => router.push(routes.studySetupProfile(p.id)) },
+        ...(profiles.length < MAX_PROFILES
+          ? [{ label: 'Duplica', icon: 'duplicate' as const, onPress: () => saveProfile({ ...p, id: newProfileId(profiles, p.name), name: `${p.name} (copia)` }) }]
+          : []),
+        ...(profiles.length > 1 ? [{ label: 'Elimina', icon: 'delete' as const, destructive: true, onPress: () => deleteProfile(p.id) }] : []),
+      ],
+    });
 
   return (
     <>
-      <SetupTitle step={3} />
-      <HeaderItems right={[{ kind: 'button', label: 'Inizia', variant: 'prominent', disabled: !!error, onPress: start }]} />
-      <Screen keyboardShouldPersistTaps="handled">
-        {presets.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingTop: 10 }}>
-            {presets.map((p) => (
+      <Stack.Screen options={{ headerTitle: () => <StepProgress step={3} /> }} />
+      <Screen>
+        <Animated.View entering={FadeInDown.duration(380)} style={{ paddingHorizontal: 4, paddingTop: 10 }}>
+          <Text style={[styles.title, { color: t.text }]}>
+            Chi ti <Text style={{ color: t.accentText }}>valuta oggi?</Text>
+          </Text>
+          <Text style={[styles.sub, { color: t.textSecondary }]}>Scegli un profilo. Criteri, pesi e voto sono già dentro.</Text>
+        </Animated.View>
+
+        <View style={{ gap: 8, marginTop: 18 }}>
+          {profiles.map((p, i) => {
+            const on = p.id === chosen?.id;
+            return (
+              <Animated.View key={p.id} entering={FadeInDown.delay(60 + i * 55).duration(360)} layout={LinearTransition.duration(220)}>
               <Pressable
-                key={p.name}
-                onLongPress={() =>
-                  showActionSheet({ title: p.name, options: [{ label: 'Elimina preset', icon: 'delete', destructive: true, onPress: () => deletePreset(p.name) }] })
-                }>
-                <Pill
-                  size="md"
-                  active={draft.presetName === p.name}
-                  onPress={() => studyDraft.set({ ...draft, instructions: p.instructions, criteria: p.criteria, scale: p.scale, presetName: p.name })}>
-                  {p.name}
-                </Pill>
+                onPress={() => {
+                  if (on) return;
+                  haptic.select();
+                  studyDraft.set({ ...draft, profileId: p.id });
+                }}
+                onLongPress={() => {
+                  haptic.tap();
+                  more(p);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityHint="Tieni premuto per modificare, duplicare o eliminare"
+                style={({ pressed }) => [[styles.card, choiceCardStyle(t, on)], pressed && { opacity: 0.85 }]}>
+                <View style={styles.row}>
+                  <ProfileAvatar icon={p.icon} strong={on} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ color: t.text, fontSize: 16, fontWeight: on ? '700' : '600', letterSpacing: -0.2 }}>
+                      {p.name}
+                    </Text>
+                    <Text numberOfLines={1} style={{ color: on ? t.textBody : t.textSecondary, fontSize: 12.5, marginTop: 2 }}>
+                      {profileSubtitle(p)}
+                    </Text>
+                  </View>
+                  {on ? (
+                    <Animated.View entering={FadeIn.duration(200)}>
+                      <Icon name="checkCircle" size={22} color={t.accentText} />
+                    </Animated.View>
+                  ) : null}
+                </View>
+                {on && p.criteria.length ? (
+                  <View style={styles.weights}>
+                    {p.criteria.map((c, j) => (
+                      <Animated.View key={c.id} entering={FadeIn.delay(80 + j * 40).duration(220)} style={[styles.weight, { backgroundColor: t.fill }]}>
+                        <Text style={{ color: t.textBody, fontSize: 11.5, fontWeight: '600' }}>
+                          {c.name} {c.weight}
+                        </Text>
+                      </Animated.View>
+                    ))}
+                  </View>
+                ) : null}
               </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
-
-        <SectionHeader>Come vuoi essere valutato</SectionHeader>
-        <TextInput
-          value={draft.instructions}
-          onChangeText={(instructions) => studyDraft.set({ ...draft, instructions, presetName: undefined })}
-          placeholder="Es. Sii severo come all’orale di Analisi 1. Penalizza i teoremi enunciati senza ipotesi."
-          placeholderTextColor={t.textMuted}
-          multiline
-          maxLength={2000}
-          selectionColor={t.accentText}
-          style={[styles.instructions, { backgroundColor: t.cell, color: t.text }]}
-        />
-
-        <View style={styles.criteriaHeader}>
-          <SectionHeader style={{ flex: 1 }}>Criteri · peso</SectionHeader>
-          {draft.criteria.length && sum !== 100 ? (
-            <Pressable onPress={() => studyDraft.set({ ...draft, criteria: rebalance(draft.criteria) })} hitSlop={8} style={{ marginTop: 11 }}>
-              <Text style={{ color: t.accentText, fontSize: 13, fontWeight: '600' }}>Riporta a 100%</Text>
+              </Animated.View>
+            );
+          })}
+          {profiles.length < MAX_PROFILES ? (
+            <Animated.View entering={FadeInDown.delay(60 + profiles.length * 55).duration(360)} layout={LinearTransition}>
+            <Pressable
+              onPress={() => {
+                haptic.light();
+                router.push(routes.studySetupProfile());
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [[styles.card, styles.row, styles.add, { borderColor: t.hairline }], pressed && { opacity: 0.85 }]}>
+              <View style={[styles.addIcon, { backgroundColor: t.accentSoft }]}>
+                <Icon name="add" size={20} color={t.accentText} />
+              </View>
+              <Text style={{ color: t.accentText, fontSize: 15.5, fontWeight: '600' }}>Nuovo profilo</Text>
             </Pressable>
+            </Animated.View>
           ) : null}
         </View>
-        {draft.criteria.length ? (
-          <CriteriaList criteria={draft.criteria} onChange={(criteria) => studyDraft.set({ ...draft, criteria, presetName: undefined })} />
-        ) : null}
-        {draft.criteria.length < MAX_CRITERIA ? (
-          <Section inset={13} style={{ marginTop: 8 }}>
-            <Cell
-              icon={<IconWell name="add" />}
-              title="Aggiungi criterio"
-              titleColor={t.accentText}
-              onPress={() => studyDraft.set({ ...draft, criteria: addCriterion(draft.criteria, 'Nuovo criterio'), presetName: undefined })}
-            />
-          </Section>
-        ) : null}
-        <Text style={[styles.note, { color: error ? t.errorText : t.textMuted }]}>
-          {error ??
-            (open
-              ? `Pesi: ${sum}%. Le domande chiuse si correggono da sole; i criteri pesano sulle aperte e sulle motivazioni dei vero o falso.`
-              : 'Senza domande aperte i criteri contano solo per le motivazioni dei vero o falso.')}
-        </Text>
 
-        <SectionHeader>Scala del voto</SectionHeader>
-        <SegmentedControl
-          values={SCALES.map((s) => SCALE_LABELS[s])}
-          selectedIndex={SCALES.indexOf(draft.scale)}
-          onValueChange={(label) => studyDraft.set({ ...draft, scale: SCALES.find((s) => SCALE_LABELS[s] === label)!, presetName: undefined })}
-          appearance={t.scheme}
-          tintColor={t.accent}
-        />
-
-        {naming === null ? (
-          <Pressable onPress={() => setNaming(draft.presetName ?? '')} style={styles.presetLink} accessibilityRole="button">
-            <Icon name="bookmark" size={16} color={t.accentText} />
-            <Text style={{ color: t.accentText, fontSize: 15 }}>
-              {draft.presetName ? `Preset «${draft.presetName}»` : 'Salva come preset'}
-            </Text>
+        {chosen ? (
+          <Pressable onPress={() => router.push(routes.studySetupProfile(chosen.id))} style={{ alignSelf: 'center', padding: 10, marginTop: 6 }} accessibilityRole="button">
+            <Text style={{ color: t.accentText, fontSize: 14, fontWeight: '600' }}>Modifica “{chosen.name}”</Text>
           </Pressable>
-        ) : (
-          <View style={[styles.presetRow, { backgroundColor: t.cell }]}>
-            <TextInput
-              value={naming}
-              onChangeText={setNaming}
-              placeholder="Nome del preset, es. Orale Analisi"
-              placeholderTextColor={t.textMuted}
-              autoFocus
-              maxLength={60}
-              onSubmitEditing={confirmPreset}
-              selectionColor={t.accentText}
-              style={{ flex: 1, color: t.text, fontSize: 15.5, paddingVertical: 10 }}
-            />
-            <Pressable onPress={confirmPreset} hitSlop={8} disabled={!naming.trim()}>
-              <Text style={{ color: naming.trim() ? t.accentText : t.textMuted, fontWeight: '600', fontSize: 15 }}>Salva</Text>
-            </Pressable>
-          </View>
-        )}
+        ) : null}
+        {error ? <Text style={[styles.note, { color: t.errorText }]}>{error}</Text> : null}
       </Screen>
+      <FooterBar>
+        <BigButton label="Inizia la sessione" icon="play" disabled={!!error} onPress={start} style={{ flex: 1 }} />
+      </FooterBar>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  instructions: { borderRadius: 14, padding: 13, minHeight: 84, fontSize: 15, lineHeight: 21, textAlignVertical: 'top' },
-  criteriaHeader: { flexDirection: 'row', alignItems: 'center' },
-  note: { fontSize: 12, lineHeight: 16, marginTop: 8, marginHorizontal: 6 },
-  presetLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 22, paddingVertical: 8 },
-  presetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, paddingHorizontal: 13, marginTop: 22 },
+  title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.9, lineHeight: 32 },
+  sub: { fontSize: 13.5, lineHeight: 19, marginTop: 6 },
+  card: { padding: 12, borderRadius: 16, borderWidth: 1.5, borderCurve: 'continuous' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  weights: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10, paddingLeft: 50 },
+  weight: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 9999 },
+  add: { borderStyle: 'dashed', backgroundColor: 'transparent' },
+  addIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  note: { fontSize: 12.5, lineHeight: 17, marginTop: 6, marginHorizontal: 6, textAlign: 'center' },
 });

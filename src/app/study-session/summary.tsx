@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BigButton, FooterBar } from '@/components/study/parts';
 import { Banner, Cell, EmptyState, IconWell, Screen, Section } from '@/components/ui';
 import { goTo, studySession, submitSession } from '@/data/study';
+import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
 import { gridStates, TYPE_LABELS, type GridState } from '@/lib/study-model';
 import { useTheme, type Theme } from '@/theme';
@@ -19,11 +20,13 @@ export default function SummaryScreen() {
   const states = gridStates(s.questions, s.answers, new Set(s.flagged));
   const pending = s.questions.map((q, i) => ({ q, i, state: states[i]! })).filter((x) => x.state !== 'answered');
   const open = (i: number) => {
+    haptic.light();
     goTo(i);
     if (router.canGoBack()) router.back();
     else router.replace(routes.studySession('quiz'));
   };
   const handIn = () => {
+    haptic.success();
     submitSession();
     router.replace(routes.studySession('result'));
   };
@@ -64,12 +67,12 @@ export default function SummaryScreen() {
         ) : null}
 
         <Banner icon="info" style={{ marginTop: 18 }}>
-          {`Le domande vuote valgono 0. Valutazione ${s.draft.presetName ? `secondo il preset «${s.draft.presetName}»` : 'con i tuoi criteri'}, scala ${s.draft.scale === 'percent' ? '%' : s.draft.scale === 'judgement' ? 'a giudizio' : `/${s.draft.scale}`}.`}
+          {`Le domande vuote valgono 0. Valutazione ${s.draft.presetName ? `secondo il profilo «${s.draft.presetName}»` : 'con i tuoi criteri'}, scala ${s.draft.scale === 'percent' ? '%' : s.draft.scale === 'judgement' ? 'a giudizio' : `/${s.draft.scale}`}.`}
         </Banner>
       </Screen>
       <FooterBar>
         <View style={{ flex: 1, gap: 6 }}>
-          <BigButton label="Consegna e valuta" icon="checkCircle" onPress={handIn} />
+          <BigButton label="Consegna e valuta" icon="checkCircle" silent onPress={handIn} />
           <BigButton label="Continua a rispondere" variant="plain" onPress={() => (router.canGoBack() ? router.back() : router.replace(routes.studySession('quiz')))} />
         </View>
       </FooterBar>

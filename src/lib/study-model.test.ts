@@ -19,6 +19,13 @@ import {
   totalQuestions,
   trend,
   wordCount,
+  applyProfile,
+  DEFAULT_PROFILES,
+  profileError,
+  profileSubtitle,
+  streakDays,
+  thisWeek,
+  gradingFromInstructions,
 } from './study-model.ts';
 
 describe('sse parser', () => {
@@ -238,5 +245,53 @@ describe('sessionFromReport', () => {
     assert.equal(sessionFromReport('# Appunti', 'Chimica', (p) => p), null);
     const fewer = note.replace('### 3. 🟡 Definisci Gibbs.', '').replace(/\*\*Punti attesi[\s\S]*?\n\n```lore/, '```lore');
     assert.equal(sessionFromReport(fewer, 'Chimica', (p) => p), null);
+  });
+});
+
+describe('grading profiles', () => {
+  it('copies a profile into the draft', () => {
+    const p = DEFAULT_PROFILES[1]!;
+    const d = applyProfile(defaultDraft('P'), p);
+    assert.equal(d.profileId, p.id);
+    assert.equal(d.presetName, p.name);
+    assert.equal(d.scale, p.scale);
+    assert.equal(d.correctionAtEnd, p.correctionAtEnd);
+    assert.notEqual(d.criteria, p.criteria);
+  });
+
+  it('validates name and weights, and summarises', () => {
+    const p = DEFAULT_PROFILES[0]!;
+    assert.equal(profileError(p), null);
+    assert.equal(profileError({ ...p, name: ' ' }), 'Dai un nome al profilo');
+    assert.match(profileError({ ...p, criteria: p.criteria.map((c) => ({ ...c, weight: 10 })) })!, /ora 40%/);
+    assert.equal(profileSubtitle({ instructions: 'Severo. Molto.', scale: '30' }), 'Severo · /30');
+    assert.equal(profileSubtitle({ instructions: '', scale: 'judgement' }), 'Voto a giudizio');
+  });
+});
+
+describe('studio tab', () => {
+  const now = new Date(2026, 10, 14, 10); // Saturday 14 Nov 2026
+  it('counts the streak up to today or yesterday', () => {
+    assert.equal(streakDays(['2026-11-12', '2026-11-13', '2026-11-14'], now), 3);
+    assert.equal(streakDays(['2026-11-12', '2026-11-13'], now), 2);
+    assert.equal(streakDays(['2026-11-10', '2026-11-12'], now), 0);
+  });
+  it('lays out this week from Monday', () => {
+    const w = thisWeek(['2026-11-09', '2026-11-14'], now);
+    assert.equal(w[0]!.date, '2026-11-09');
+    assert.equal(w[0]!.done, true);
+    assert.equal(w[5]!.today, true);
+    assert.equal(w[6]!.future, true);
+  });
+});
+
+describe('grading from instructions', () => {
+  it('reads scale and correction mode from free text', () => {
+    assert.deepEqual(gradingFromInstructions('Severo. Voto in trentesimi.'), { scale: '30', correctionAtEnd: true });
+    assert.deepEqual(gradingFromInstructions('Gentile, voto /10, correggi dopo ogni domanda'), { scale: '10', correctionAtEnd: false });
+    assert.equal(gradingFromInstructions('Dammi un voto in percentuale').scale, 'percent');
+    assert.equal(gradingFromInstructions('Solo un giudizio').scale, 'judgement');
+    assert.deepEqual(gradingFromInstructions(''), { scale: '30', correctionAtEnd: true });
+    for (const p of DEFAULT_PROFILES) assert.deepEqual(gradingFromInstructions(p.instructions), { scale: p.scale, correctionAtEnd: p.correctionAtEnd });
   });
 });

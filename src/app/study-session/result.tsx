@@ -1,5 +1,7 @@
 import { router, Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { ActivityIndicator, Share, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
@@ -8,6 +10,7 @@ import { Banner, Cell, EmptyState, IconWell, ProgressBar, Screen, Section, Secti
 import { abortSession, closeReview, studyReview, submitSession, useShownSession } from '@/data/study';
 import { basename } from '@/lib/paths';
 import { useCloseSession } from '@/components/study/use-close-session';
+import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
 import { durationText, TYPE_LABELS } from '@/lib/study-model';
 import { useTheme, type Theme } from '@/theme';
@@ -23,6 +26,11 @@ export default function ResultScreen() {
   const s = useShownSession();
   const reviewing = studyReview.useValue() !== null;
   const exit = useCloseSession();
+  const arrived = !!s?.result;
+  // The grade lands: a success buzz, only for a live session (not when reopening a report).
+  useEffect(() => {
+    if (arrived && !reviewing) haptic.success();
+  }, [arrived, reviewing]);
   if (!s) return <EmptyState icon="school" title="Nessuna sessione" />;
   const r = s.result;
 
@@ -72,20 +80,20 @@ export default function ResultScreen() {
           )
         ) : (
           <>
-            <View style={{ alignItems: 'center', paddingTop: 12 }}>
+            <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: 'center', paddingTop: 12 }}>
               <Text style={[styles.grade, { color: t.text }]}>
                 {r.grade.label}
                 {r.grade.suffix.startsWith('/') ? <Text style={[styles.of, { color: t.textMuted }]}> su {r.grade.suffix.slice(1)}</Text> : r.grade.suffix}
               </Text>
               <Text style={[styles.headline, { color: t.text }]}>{r.headline}</Text>
               <Text style={{ color: t.textSecondary, textAlign: 'center', fontSize: 14.5, lineHeight: 20, marginTop: 4 }}>{r.subline}</Text>
-            </View>
+            </Animated.View>
 
-            <View style={styles.stats}>
+            <Animated.View entering={FadeInDown.delay(180).duration(380)} style={styles.stats}>
               <Stat t={t} value={`${r.closedCorrect}/${r.closedTotal}`} label="Chiuse corrette" />
               {r.openAverage !== null ? <Stat t={t} value={`${r.openAverage.toLocaleString('it-IT')}/10`} label="Media aperte" /> : null}
               <Stat t={t} value={durationText(r.durationSec)} label="Durata" />
-            </View>
+            </Animated.View>
 
             {r.criteria.some((c) => c.score !== null) ? (
               <>

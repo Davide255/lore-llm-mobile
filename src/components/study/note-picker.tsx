@@ -11,6 +11,7 @@ import { Banner, Cell, EmptyState, IconWell, Loading, Pill, Screen, Section } fr
 import { useProjectFiles, useProjects } from '@/data/hooks';
 import { studyDraft } from '@/data/study';
 import { basename, dirname, projectLabel, projectOf } from '@/lib/paths';
+import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
 import { MAX_SOURCES, stepError, studyKind } from '@/lib/study-model';
 import { useTheme } from '@/theme';
@@ -77,11 +78,15 @@ export function NotePicker({ dir }: { dir: string | null }) {
   const allPicked = shownFiles.length > 0 && shownFiles.every((p) => selected.has(p));
 
   const toggle = (path: string) => {
+    // Picking a note past the limit answers with a bump instead of a tick.
+    if (!selected.has(path) && draft.sources.length >= MAX_SOURCES) haptic.warn();
+    else haptic.select();
     const next = selected.has(path) ? draft.sources.filter((p) => p !== path) : [...draft.sources, path];
     studyDraft.set({ ...draft, sources: next });
   };
 
   const toggleAll = () => {
+    haptic.light();
     const shown = new Set(shownFiles);
     const next = allPicked
       ? draft.sources.filter((p) => !shown.has(p))
@@ -135,9 +140,15 @@ export function NotePicker({ dir }: { dir: string | null }) {
           />
         </View>
         <View style={styles.filters}>
-          <Pill size="md" active={!kind} onPress={() => setKind(null)}>{`Tutti · ${notes.length}`}</Pill>
+          <Pill size="md" active={!kind} onPress={() => {
+            haptic.select();
+            setKind(null);
+          }}>{`Tutti · ${notes.length}`}</Pill>
           {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
-            <Pill key={k} size="md" active={kind === k} onPress={() => setKind(kind === k ? null : k)}>
+            <Pill key={k} size="md" active={kind === k} onPress={() => {
+              haptic.select();
+              setKind(kind === k ? null : k);
+            }}>
               {KIND_LABELS[k]}
             </Pill>
           ))}
@@ -173,7 +184,10 @@ export function NotePicker({ dir }: { dir: string | null }) {
                       </Text>
                     }
                     chevron
-                    onPress={() => router.push(routes.studySetupFolder(f.path))}
+                    onPress={() => {
+                      haptic.light();
+                      router.push(routes.studySetupFolder(f.path));
+                    }}
                   />
                 ))}
               </Section>

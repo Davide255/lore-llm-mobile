@@ -30,7 +30,12 @@ export const routes = {
   /** Settings sub-pages (the Settings tab's own stack). */
   settings: (page: 'account' | 'teams' | 'agents' | 'appearance') => `/settings/${page}` as Href,
   /** Study mode: the 3-step setup modal, and the session (questions, summary, grade). */
-  studySetup: (step?: 'types' | 'criteria') => (step ? `/study-setup/${step}` : '/study-setup') as Href,
+  studySetup: (step?: 'types' | 'mix' | 'criteria') => (step ? `/study-setup/${step}` : '/study-setup') as Href,
+  /** A5 — a grading profile's editor inside the setup modal; no id: a new profile. */
+  studySetupProfile: (id?: string) => ({ pathname: '/study-setup/profile', params: id ? { id } : {} }) as unknown as Href,
+  /** The profiles in Settings, and one profile's editor there. */
+  studyProfiles: () => '/settings/profiles' as Href,
+  studyProfile: (id?: string) => ({ pathname: '/settings/profile', params: id ? { id } : {} }) as unknown as Href,
   /** Step 1 inside a subfolder: the note picker pushed on itself, one screen per folder. */
   studySetupFolder: (dir: string) => ({ pathname: '/study-setup/folder', params: { dir } }) as unknown as Href,
   studySession: (screen: 'generating' | 'quiz' | 'summary' | 'result') => `/study-session/${screen}` as Href,

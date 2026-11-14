@@ -12,6 +12,7 @@ import { ContentPane, SidebarReveal, SidebarShell } from '@/components/sidebar-s
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
+import { loadStudyPrefs } from '@/data/study';
 import { resetUploads } from '@/data/uploads';
 import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
@@ -51,6 +52,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
+  // A study session cut short when the app was last closed picks up where it was.
+  useEffect(() => {
+    if (ready && space) loadStudyPrefs();
+  }, [ready, space]);
   if (!ready) return null;
   const signedIn = space !== null;
 
