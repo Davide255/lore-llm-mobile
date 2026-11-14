@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { GenericOAuth2, OAuth2Errors, type TokenResponse } from '../../modules/generic-oauth2';
 import { createSignal } from '@/data/store';
-import { DEMO, installDemoWorker } from '@/demo/demo';
+import { DEMO, DEMO_USER_NAME, installDemoWorker } from '@/demo/demo';
 
 /**
  * Sign in with Google or Apple, brokered by AWS Cognito (the user pool the lore-llm
@@ -62,7 +62,7 @@ async function persist() {
  */
 export const SKIP_AUTH = __DEV__ && (DEMO || process.env.EXPO_PUBLIC_SKIP_AUTH === '1');
 if (DEMO) installDemoWorker();
-const DEBUG_USER: AuthUser = { id: 'debug-user', name: 'Debug User', email: null, provider: 'Google' };
+const DEBUG_USER: AuthUser = { id: 'debug-user', name: DEMO_USER_NAME, email: null, provider: 'Google' };
 
 export async function loadSession() {
   if (SKIP_AUTH) {

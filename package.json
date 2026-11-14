@@ -44,6 +44,7 @@
     "reset-project": "node ./scripts/reset-project.js",
     "start:debug": "EXPO_PUBLIC_SKIP_AUTH=1 expo start --clear",
     "start:demo": "EXPO_PUBLIC_DEMO=1 expo start --clear",
+    "start:store-demo": "EXPO_PUBLIC_DEMO=store expo start --clear",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build": "expo export --platform web",
