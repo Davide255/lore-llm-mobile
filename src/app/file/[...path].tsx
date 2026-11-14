@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ComponentRef } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentView } from '@/components/attachment-view';
@@ -28,7 +28,7 @@ export default function FileScreen() {
 function NoteScreen({ path }: { path: string }) {
   const t = useTheme();
   const params = useLocalSearchParams<{ path: string[]; heading?: string }>();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const file = useFile(path);
   const doc = file.data;
   const textScale = useTextScale();
