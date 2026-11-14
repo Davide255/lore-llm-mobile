@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lore LLM",
     "slug": "lore-llm",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/lore-llm-logo.png",
     "scheme": "lorellm",

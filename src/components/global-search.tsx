@@ -4,15 +4,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeIn,
-  FadeInDown,
   FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
-  withSpring,
   withTiming,
-  ZoomIn,
 } from 'react-native-reanimated';
 
 import type { Project, SearchHit, SearchResponse } from '@/api';
@@ -38,21 +34,21 @@ const tap = () => {
   if (Platform.OS !== 'web') void Haptics.selectionAsync().catch(() => {});
 };
 
-/** Rows fade up one after the other, the first few only: long lists don't wait. */
-const enter = (i: number) => FadeInDown.delay(Math.min(i, 8) * 40).duration(280);
-const layout = LinearTransition.springify().damping(20).stiffness(220);
+/** Search is quick, so it stays calm: one short fade for everything that appears or goes. */
+const FADE_IN = FadeIn.duration(120);
+const FADE_OUT = FadeOut.duration(90);
 
 // ─── Building blocks ─────────────────────────────────────────────────────────
 
-/** A pressable that sinks a little under the finger (spring back on release). */
+/** A pressable that dips slightly under the finger. */
 function PressScale({ onPress, style, children, accessibilityLabel }: { onPress: () => void; style?: object; children: ReactNode; accessibilityLabel?: string }) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   return (
     <Pressable
       onPress={onPress}
-      onPressIn={() => scale.set(withSpring(0.97, { damping: 18, stiffness: 400 }))}
-      onPressOut={() => scale.set(withSpring(1, { damping: 14, stiffness: 300 }))}
+      onPressIn={() => scale.set(withTiming(0.98, { duration: 70 }))}
+      onPressOut={() => scale.set(withTiming(1, { duration: 90 }))}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}>
       <Animated.View style={[style, animated]}>{children}</Animated.View>
@@ -108,7 +104,7 @@ export function RecentSearches({ onPick }: { onPick: (q: string) => void }) {
   const recent = useRecentSearches().data ?? [];
   if (!recent.length) return null;
   return (
-    <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(120)} layout={layout}>
+    <Animated.View entering={FADE_IN} exiting={FADE_OUT}>
       <Heading
         right={
           <Pressable hitSlop={10} onPress={() => recent.forEach((q) => actions.removeRecentSearch(q))} accessibilityRole="button">
@@ -119,7 +115,7 @@ export function RecentSearches({ onPick }: { onPick: (q: string) => void }) {
       </Heading>
       <View style={styles.chips}>
         {recent.map((q, i) => (
-          <Animated.View key={q} entering={FadeIn.delay(i * 30)} exiting={FadeOut.duration(150)} layout={layout}>
+          <Animated.View key={q} entering={FADE_IN} exiting={FADE_OUT}>
             <PressScale onPress={() => onPick(q)} style={[styles.recent, { backgroundColor: t.cell, borderColor: t.hairline }]} accessibilityLabel={`Cerca ${q}`}>
               <Icon name="history" size={14} color={t.textMuted} />
               <Text numberOfLines={1} style={{ fontSize: 14, color: t.text, maxWidth: 200 }}>
@@ -200,11 +196,11 @@ export function GlobalSearchResults({
   return (
     <View>
       {matchingProjects.length > 0 && (
-        <Animated.View entering={FadeIn.duration(200)} layout={layout}>
+        <Animated.View entering={FADE_IN}>
           <Heading>{plural(matchingProjects.length, 'progetto', 'progetti')}</Heading>
           <View style={[styles.card, { backgroundColor: t.cell }]}>
             {matchingProjects.map((p, i) => (
-              <Animated.View key={p.name} entering={enter(i)} layout={layout}>
+              <Animated.View key={p.name} entering={FADE_IN}>
                 {i > 0 && <View style={[styles.separator, { backgroundColor: t.hairline }]} />}
                 {renderProject(p)}
               </Animated.View>
@@ -214,7 +210,7 @@ export function GlobalSearchResults({
       )}
 
       {counts.size > 0 && (
-        <Animated.View entering={FadeIn.duration(200)} layout={layout}>
+        <Animated.View entering={FADE_IN}>
           <Heading right={<Status loading={loading} t={t} />}>
             {`${plural(matches, 'risultato', 'risultati')} · ${plural(hits.length, 'nota', 'note')}`}
           </Heading>
@@ -232,7 +228,7 @@ export function GlobalSearchResults({
       ) : (
         <>
           {showTop && (
-            <Animated.View key={`top:${top.path}`} entering={FadeInDown.duration(320).springify().damping(18)} layout={layout} style={{ marginTop: 6 }}>
+            <Animated.View key={`top:${top.path}`} entering={FADE_IN} style={{ marginTop: 6 }}>
               <PressScale onPress={() => open(top)} style={[styles.top, { backgroundColor: t.cellRaised, borderColor: t.accentSoft }]} accessibilityLabel={`Apri ${top.name}`}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Icon name="starFill" size={11} color={t.accentText} />
@@ -258,13 +254,13 @@ export function GlobalSearchResults({
           )}
 
           {groups.map((g, gi) => (
-            <Animated.View key={g.project} entering={FadeIn.duration(220)} exiting={FadeOut.duration(140)} layout={layout}>
+            <Animated.View key={g.project} entering={FADE_IN} exiting={FADE_OUT}>
               <Heading>
                 {`${projectLabel(g.project)}${teamOf(g.project) ? ' · team' : ''}`}
               </Heading>
               <View style={[styles.card, { backgroundColor: t.cell }]}>
                 {g.hits.map((hit, i) => (
-                  <Animated.View key={hit.path} entering={enter(starts[gi]! + i)} exiting={FadeOut.duration(120)} layout={layout}>
+                  <Animated.View key={hit.path} entering={FADE_IN} exiting={FADE_OUT}>
                     {i > 0 && <View style={[styles.separator, { backgroundColor: t.hairline }]} />}
                     <ResultRow hit={hit} t={t} onPress={() => open(hit)} />
                   </Animated.View>
@@ -316,7 +312,7 @@ function ResultRow({ hit, t, onPress }: { hit: SearchHit; t: Theme; onPress: () 
 function FilterChip({ label, count, active, team, onPress }: { label: string; count: number; active: boolean; team?: boolean; onPress: () => void }) {
   const t = useTheme();
   return (
-    <Animated.View layout={layout} entering={FadeIn.duration(180)}>
+    <Animated.View entering={FADE_IN}>
       <PressScale
         onPress={onPress}
         style={[styles.chip, active ? { backgroundColor: t.accent, borderColor: t.accent } : { backgroundColor: t.cell, borderColor: t.hairline }]}
@@ -350,7 +346,7 @@ function Skeleton() {
   }, [pulse]);
   const style = useAnimatedStyle(() => ({ opacity: pulse.get() }));
   return (
-    <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)} style={{ marginTop: 22 }}>
+    <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={{ marginTop: 22 }}>
       <View style={[styles.card, { backgroundColor: t.cell }]}>
         {[0.62, 0.48, 0.7].map((w, i) => (
           <Animated.View key={i} style={[styles.row, style]}>
@@ -368,8 +364,8 @@ function Skeleton() {
 
 function EmptyResults({ query, t }: { query: string; t: Theme }) {
   return (
-    <Animated.View entering={FadeIn.duration(250)} style={styles.empty}>
-      <Animated.View entering={ZoomIn.springify().damping(14)} style={[styles.emptyIcon, { backgroundColor: t.accentWell }]}>
+    <Animated.View entering={FADE_IN} style={styles.empty}>
+      <Animated.View entering={FADE_IN} style={[styles.emptyIcon, { backgroundColor: t.accentWell }]}>
         <Icon name="search" size={26} color={t.accentText} />
       </Animated.View>
       <Text style={{ fontSize: 17, fontWeight: '600', color: t.text, textAlign: 'center' }}>Nessun risultato per “{query}”</Text>

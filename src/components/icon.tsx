@@ -19,6 +19,7 @@ export const icons = {
   chevronDown: { sf: 'chevron.down', md: 'expand_more' },
   chevronUpDown: { sf: 'chevron.up.chevron.down', md: 'unfold_more' },
   add: { sf: 'plus', md: 'add' },
+  sidebar: { sf: 'sidebar.left', md: 'menu' },
   addCircle: { sf: 'plus.circle', md: 'add_circle' },
   more: { sf: 'ellipsis', md: 'more_horiz' },
   sort: { sf: 'arrow.up.arrow.down', md: 'sort' },

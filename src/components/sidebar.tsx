@@ -17,7 +17,7 @@ import { sortEntries } from '@/lib/sort';
 import { ancestors, sidebarSelection, type SidebarSection } from '@/lib/split';
 import { attachmentKind } from '@/lib/upload-plan';
 import { brand, fonts, useTheme } from '@/theme';
-import { SIDEBAR_WIDTH } from '@/theme/layout';
+import { SIDEBAR_WIDTH, sidebarOpen } from '@/theme/layout';
 import { useSortOrder } from '@/theme/sort-order';
 
 const SECTION_HREF: Record<SidebarSection, Href> = {
@@ -80,13 +80,23 @@ export function Sidebar() {
         styles.root,
         { width: SIDEBAR_WIDTH, backgroundColor: t.sidebar, borderColor: t.hairline, paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10, paddingLeft: insets.left + 10 },
       ]}>
-      <Pressable
-        onPress={openSearch}
-        accessibilityRole="search"
-        style={({ pressed }) => [styles.search, { backgroundColor: pressed ? t.fill : t.fillSubtle }]}>
-        <Icon name="search" size={17} color={t.textMuted} />
-        <Text style={{ flex: 1, fontSize: 15, color: t.textMuted }}>Cerca</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Pressable
+          onPress={openSearch}
+          accessibilityRole="search"
+          style={({ pressed }) => [styles.search, { flex: 1, backgroundColor: pressed ? t.fill : t.fillSubtle }]}>
+          <Icon name="search" size={17} color={t.textMuted} />
+          <Text style={{ flex: 1, fontSize: 15, color: t.textMuted }}>Cerca</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => sidebarOpen.set(false)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Nascondi la barra laterale"
+          style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? t.fill : 'transparent' })}>
+          <Icon name="sidebar" size={20} color={t.textSecondary} />
+        </Pressable>
+      </View>
 
       <View style={{ gap: 2, marginTop: 10 }}>
         <NavItem icon="folder" activeIcon="folderFill" label="Progetti" active={section === 'projects' && !path} onPress={() => openSection('projects')} />
@@ -391,7 +401,7 @@ function AgentsFooter() {
 }
 
 const styles = StyleSheet.create({
-  root: { borderRightWidth: StyleSheet.hairlineWidth, paddingRight: 10 },
+  root: { flex: 1, borderRightWidth: StyleSheet.hairlineWidth, paddingRight: 10 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 40, paddingHorizontal: 12, borderRadius: 12, borderCurve: 'continuous' },
   nav: { flexDirection: 'row', alignItems: 'center', gap: 12, height: 42, paddingHorizontal: 12, borderRadius: 12, borderCurve: 'continuous' },
   label: { flexDirection: 'row', alignItems: 'center', marginTop: 22, marginBottom: 8, marginLeft: 12, marginRight: 10 },

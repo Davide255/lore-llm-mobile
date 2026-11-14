@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setKnowledgeBaseUser } from '@/api';
 import { authUser, loadSession } from '@/auth/session';
 import { ActionSheetHost } from '@/components/action-sheet';
-import { Sidebar } from '@/components/sidebar';
+import { ContentPane, SidebarReveal, SidebarShell } from '@/components/sidebar-shell';
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
@@ -75,8 +75,8 @@ export default function RootLayout() {
           <StatusBar barStyle={t.scheme === 'dark' ? 'light-content' : 'dark-content'} />
           {/* Tablet: the desktop app's sidebar, always beside the content (phones keep the tab bar). */}
           <View style={{ flex: 1, flexDirection: 'row' }}>
-            {signedIn && split ? <Sidebar /> : null}
-            <View style={{ flex: 1, minWidth: 0 }}>
+            {signedIn && split ? <SidebarShell /> : null}
+            <ContentPane>
               <Stack screenOptions={stackOptions(t)}>
                 {/* Login is required before anything else is shown. */}
                 <Stack.Protected guard={!signedIn}>
@@ -90,7 +90,7 @@ export default function RootLayout() {
                   <Stack.Screen name="change/[id]" options={{ title: '' }} />
                   <Stack.Screen name="agent/[id]" options={{ title: '' }} />
                   <Stack.Screen name="team/[id]" options={{ title: '' }} />
-                  <Stack.Screen name="edit/[...path]" options={{ presentation: 'modal', title: '' }} />
+                  <Stack.Screen name="edit/[...path]" options={{ presentation: split ? 'fullScreenModal' : 'modal', title: '' }} />
                   <Stack.Screen name="new-file" options={{ presentation: 'modal', title: 'Nuovo file' }} />
                   <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
                   <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
@@ -104,7 +104,8 @@ export default function RootLayout() {
                   <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
                 </Stack.Protected>
               </Stack>
-            </View>
+            </ContentPane>
+            {signedIn && split ? <SidebarReveal /> : null}
           </View>
           <ActionSheetHost />
           <ToastHost />
