@@ -31,6 +31,7 @@ The UI follows the *KB Wireframes* design (Athly design system), organised in si
 | **C · Create** | One "+" entry point → new `.md` file (with templates), new folder, or "paste markdown" (name taken from the H1) · new project with optional `checklist.md` |
 | **D · Search** | Full-text search across the base, recent searches, project filter pills, highlighted snippets |
 | **E · Manage** | Swipe actions (rename / delete), long-press context menu with preview, delete confirmation, 10-second undo toast |
+| **Studio** | *Modalità studio* design: a Studio tab (trend of the last sessions, saved reports) · a 3-step setup (notes — markdown, PDFs, photos, from any project · mix of multiple-choice / true-false / open questions, difficulty · weighted grading criteria, scale, presets) · questions streamed in as the AI writes them, one per screen · summary grid before handing in · grade per criterion and per answer, with the AI's comment · the report saved as `studio/<date>-<topic>.md` in the project |
 | **F · Agents** | Activity feed of agent changes (server audit log) · unified diff of a change with restore · per-agent permissions (read / read-write) and projects · connect a Claude or Codex agent (token shown once, with its setup) · revoke |
 
 Plus: TeX math in documents (`$…$` and `\(…\)` inline; `$$…$$`, `\[…\]` and ` ```math ` blocks), sign in with Apple or Google, agent identities (Claude/Codex avatars, friendly names; listings and documents say which agent edited what), and light/dark themes with an in-app **Aspetto** setting (System / Light / Dark).
@@ -128,6 +129,10 @@ The app talks to the lore-llm Worker (`EXPO_PUBLIC_LORE_API_URL`, default the de
 - keeps what object storage can't hold on the device, per user: empty folders, project icon/description, recent files and searches;
 - polls `/v1/audit` every 10 s in the foreground (and on returning to the app) to pick up agent writes. An agent change it sees happen keeps its diff and can be restored; Activity lists every change in the audit log;
 - deletes are undoable for 10 s (the contents are kept in memory and written back).
+
+### Study mode
+
+`POST /v1/study-mode/generate|grade` on the same Worker, which forwards to the study Lambda and passes its server-sent events through (contract: lore-llm `docs/STUDY_API.md`). `src/api/study/study-client.ts` reads the stream with `expo/fetch` (imported by name: React Native's own fetch can't stream a body) and `src/lib/sse.ts`; `src/data/study.ts` keeps the session in memory until hand-in. The Lambda reads the notes and saves the report through the Worker with the user's token, so team roles apply. Grades are computed by the Lambda's code from the per-criterion scores the model gives. The Studio tab reads its history back from the reports' ```` ```lore-study ```` block, so it is the same on every device. With `EXPO_PUBLIC_DEMO=1` the study mode is faked locally (`src/demo/study-demo.ts`). Not built yet from the design: photo/voice answers, «Contesta», «Rifai solo gli errori», the coach, streak and exam countdown.
 
 ### Sign in with Apple or Google
 

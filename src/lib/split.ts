@@ -8,7 +8,7 @@ export function isSplitLayout(width: number, height: number): boolean {
   return Math.min(width, height) >= TABLET_MIN_SIDE && width >= SPLIT_MIN_WIDTH;
 }
 
-export type SidebarSection = 'projects' | 'activity' | 'settings';
+export type SidebarSection = 'projects' | 'study' | 'activity' | 'settings';
 
 /** What the sidebar highlights for a pathname: a section, and the file or folder shown, if any. */
 export function sidebarSelection(pathname: string): { section: SidebarSection | null; path: string | null } {
@@ -18,6 +18,7 @@ export function sidebarSelection(pathname: string): { section: SidebarSection | 
     return { section: 'projects', path: rest.join('/') || null };
   }
   if (!head) return { section: 'projects', path: null };
+  if (head === 'study' || head === 'study-setup' || head === 'study-session') return { section: 'study', path: null };
   if (head === 'activity' || head === 'change') return { section: 'activity', path: null };
   if (head === 'settings' || head === 'agent' || head === 'team') return { section: 'settings', path: null };
   return { section: null, path: null };

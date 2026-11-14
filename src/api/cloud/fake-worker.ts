@@ -11,7 +11,6 @@ interface Stored {
 }
 
 const ATTACHMENT_TYPE = /\.(png|jpe?g|gif|webp|svg|pdf)$/i;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const isNote = (path: string) => path.toLowerCase().endsWith('.md');
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -28,6 +27,10 @@ export function createFakeWorker() {
   const invites = new Map<string, { teamId: string; teamName: string; role: TeamRole }>();
   let clock = 0;
   let accountBlocked = false;
+  /** Rows of `GET /v1/agents` and `GET /v1/audit` (newest first). */
+  const agents: { agent_id: string; name: string; agent_type: string; project_scope: string; access_level: string; created_at: string }[] = [];
+  const audit: { log_id: number; timestamp: string; agent_id: string; action: 'CREATE' | 'UPDATE' | 'DELETE'; target_path: string }[] = [];
+  let logId = 0;
 
   const space = (owner: string) => {
     if (!spaces.has(owner)) spaces.set(owner, new Map());
@@ -36,9 +39,15 @@ export function createFakeWorker() {
   const bump = (owner: string) => versions.set(owner, (versions.get(owner) ?? 0) + 1);
 
   /** Server-side write (another device, a teammate): bumps the space's cursor. */
-  function put(owner: string, path: string, content: string) {
-    space(owner).set(path, { content, uploaded: new Date(Date.UTC(2026, 0, 1, 0, 0, ++clock)).toISOString() });
+  function put(owner: string, path: string, content: string, at?: Date) {
+    space(owner).set(path, { content, uploaded: (at ?? new Date(Date.UTC(2026, 0, 1, 0, 0, ++clock))).toISOString() });
     bump(owner);
+  }
+  /** An agent writes a file of the user's own space: the write plus its audit row. */
+  function agentWrite(agentId: string, path: string, content: string, at = new Date()) {
+    const action = space('').has(path) ? 'UPDATE' : 'CREATE';
+    put('', path, content, at);
+    audit.unshift({ log_id: ++logId, timestamp: at.toISOString(), agent_id: agentId, action, target_path: path });
   }
   function addTeam(id: string, name: string, role: TeamRole) {
     teams.set(id, { name, role });
@@ -78,8 +87,8 @@ export function createFakeWorker() {
       teams.clear();
       return ok({ ok: true, identity_deleted: true });
     }
-    if (route === 'GET /v1/audit') return ok({ items: [], next_before: null });
-    if (route === 'GET /v1/agents') return ok({ agents: [] });
+    if (route === 'GET /v1/audit') return ok({ items: audit.slice(0, Number(q.get('limit') ?? 50)), next_before: null });
+    if (route === 'GET /v1/agents') return ok({ agents });
     if (url.pathname === '/v1/stars') {
       if (!role) return ok({ error: 'Forbidden' }, 403);
       if (method === 'GET') {
@@ -176,7 +185,6 @@ export function createFakeWorker() {
       if (!ATTACHMENT_TYPE.test(p)) return ok({ error: 'Path must end in .md or an allowed attachment type' }, 400);
       if (space(owner).has(p) && q.get('overwrite') !== '1') return ok({ error: `File already exists: ${p}` }, 400);
       const bytes = String(init?.body ?? '');
-      if (bytes.length > MAX_ATTACHMENT_BYTES) return ok({ error: 'File too large (max 10485760 bytes)' }, 400);
       put(owner, p, bytes);
       return ok({ action: 'CREATE', file: meta(owner, p) }, 201);
     }
@@ -221,6 +229,10 @@ export function createFakeWorker() {
   return {
     fetch: fetch as typeof globalThis.fetch,
     put,
+    agentWrite,
+    addAgent: (row: (typeof agents)[number]) => agents.push(row),
+    /** Audit log ids start here (unique per run, so persisted client state never collides). */
+    startLogIdsAt: (n: number) => (logId = n),
     addTeam,
     /** Someone invites the user to a team: it is pending until the user answers. */
     invite: (id: string, teamId: string, teamName: string, role: TeamRole) => invites.set(id, { teamId, teamName, role }),

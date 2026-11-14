@@ -22,6 +22,7 @@ import { useSortOrder } from '@/theme/sort-order';
 
 const SECTION_HREF: Record<SidebarSection, Href> = {
   projects: '/',
+  study: '/study',
   activity: '/activity',
   settings: '/settings',
 };
@@ -100,6 +101,7 @@ export function Sidebar() {
 
       <View style={{ gap: 2, marginTop: 10 }}>
         <NavItem icon="folder" activeIcon="folderFill" label="Progetti" active={section === 'projects' && !path} onPress={() => openSection('projects')} />
+        <NavItem icon="school" activeIcon="schoolFill" label="Studio" active={section === 'study'} onPress={() => openSection('study')} />
         <NavItem icon="bolt" activeIcon="boltFill" label="Attività" active={section === 'activity'} onPress={() => openSection('activity')} />
         <NavItem icon="settings" activeIcon="settingsFill" label="Impostazioni" active={section === 'settings'} onPress={() => openSection('settings')} />
       </View>
