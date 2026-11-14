@@ -146,8 +146,8 @@ describe('upload queue', () => {
 
   it('reports what it left out and queues nothing when nothing is left', async () => {
     const h = harness();
-    const skipped = await h.queue.enqueue('P', [pick('clip.mp4', 10), pick('big.png', 11 * 1024 * 1024)]);
-    assert.deepEqual(skipped.map((s) => s.name), ['clip.mp4', 'big.png']);
+    const skipped = await h.queue.enqueue('P', [pick('clip.mp4', 10), pick('long.md', 1024 * 1024 + 1)]);
+    assert.deepEqual(skipped.map((s) => s.name), ['clip.mp4', 'long.md']);
     assert.deepEqual(h.shown(), []);
     assert.equal(h.calls.length, 0);
   });

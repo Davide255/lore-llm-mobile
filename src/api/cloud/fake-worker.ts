@@ -11,7 +11,6 @@ interface Stored {
 }
 
 const ATTACHMENT_TYPE = /\.(png|jpe?g|gif|webp|svg|pdf)$/i;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const isNote = (path: string) => path.toLowerCase().endsWith('.md');
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -176,7 +175,6 @@ export function createFakeWorker() {
       if (!ATTACHMENT_TYPE.test(p)) return ok({ error: 'Path must end in .md or an allowed attachment type' }, 400);
       if (space(owner).has(p) && q.get('overwrite') !== '1') return ok({ error: `File already exists: ${p}` }, 400);
       const bytes = String(init?.body ?? '');
-      if (bytes.length > MAX_ATTACHMENT_BYTES) return ok({ error: 'File too large (max 10485760 bytes)' }, 400);
       put(owner, p, bytes);
       return ok({ action: 'CREATE', file: meta(owner, p) }, 201);
     }
