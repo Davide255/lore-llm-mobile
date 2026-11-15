@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { findHeading, parse, splitDisplayMath, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
+import { findHeading, hasRichInline, layoutBlocks, parse, splitDisplayMath, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
 import { texToSvg } from './math.ts';
 
 const mathOf = (src: string) => parseInline(src).filter((n) => n.type === 'math');
@@ -105,4 +105,33 @@ test('splitDisplayMath cuts a paragraph at $$…$$ and leaves $…$ and code alo
     { type: 'text', text: 'after $y$ and `$$no$$`' },
   ]);
   assert.deepEqual(splitDisplayMath('plain'), [{ type: 'text', text: 'plain' }]);
+});
+
+const isFile = (target: string) => /\.(png|pdf)$/i.test(target);
+
+test('layoutBlocks puts formulas and image/PDF embeds on their own, in the middle of a text too', () => {
+  const pieces = layoutBlocks('Look ![[Asset/a.png|300]] here $$ x^2 $$ and ![[doc.pdf]] then ![[Other note]] and $y$', isFile);
+  assert.deepEqual(
+    pieces.map((p) => (p.type === 'embed' ? ['embed', p.embed.target, p.embed.width] : [p.type, p.text])),
+    [
+      ['text', 'Look'],
+      ['embed', 'Asset/a.png', 300],
+      ['text', 'here'],
+      ['math', 'x^2'],
+      ['text', 'and'],
+      ['embed', 'doc.pdf', null],
+      ['text', 'then ![[Other note]] and $y$'],
+    ],
+  );
+  assert.deepEqual(layoutBlocks('plain', isFile), [{ type: 'text', text: 'plain' }]);
+  assert.deepEqual(layoutBlocks('`![[a.png]]` stays code', isFile), [{ type: 'text', text: '`![[a.png]]` stays code' }]);
+});
+
+test('hasRichInline tells what is drawn (formulas, embeds) from what is typed', () => {
+  assert.equal(hasRichInline('area is $\pi r^2$'), true);
+  assert.equal(hasRichInline('**bold $x$**'), true);
+  assert.equal(hasRichInline('see ![[a.png]]'), true);
+  assert.equal(hasRichInline('costs $5 and $10'), false);
+  assert.equal(hasRichInline('a [[wiki]] link and `$x$` code'), false);
+  assert.equal(hasRichInline('plain text'), false);
 });

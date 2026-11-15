@@ -1,14 +1,14 @@
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, Fragment, type ComponentProps, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ColorValue, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
 import { useProjectFiles } from '@/data/hooks';
 
 import { Icon } from './icon';
 import { InlineMath, lineHeightWithMath, MathBlock } from './math';
 import { attachmentKind } from '@/lib/attachments';
-import { findHeading, parse, parseInline, parseTable, splitDisplayMath, type Block, type Inline } from '@/lib/markdown';
+import { findHeading, layoutBlocks, parse, parseInline, parseTable, type Block, type Embed, type Inline } from '@/lib/markdown';
 import { projectOf, resolveLink, resolveWikiTarget } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { AttachmentImage, PdfCard } from './attachment';
@@ -206,6 +206,20 @@ function AnchorScroll({
   );
 }
 
+/**
+ * One block of a note drawn as the reader does (formulas, images, PDFs), for the editor's live preview:
+ * the blocks that are not being edited show like this and turn into text fields when tapped.
+ */
+export function RenderedBlock({ block, path }: { block: Block; path: string }) {
+  const t = useTheme();
+  const files = useProjectFiles(projectOf(path)).data ?? null;
+  return (
+    <ProjectFiles.Provider value={files}>
+      <BlockContent block={block} path={path} t={t} />
+    </ProjectFiles.Provider>
+  );
+}
+
 function BlockView({ anchored, ...props }: ComponentProps<typeof BlockContent> & { anchored?: boolean }) {
   const report = useContext(AnchorContext);
   const content = <BlockContent {...props} />;
@@ -236,39 +250,44 @@ function BlockContent({
       </Text>
     );
   };
+  /**
+   * Like `prose`, but what stands on its own line (a `$$…$$` formula, an image or PDF `![[…]]`) is drawn
+   * in place, centered between the text around it, whether the text is a paragraph, a list item or a quote.
+   */
+  const rich = (s: string, fontSize: number, baseLineHeight: number, color: ColorValue, style?: StyleProp<TextStyle>, box?: StyleProp<ViewStyle>) => {
+    const pieces = layoutBlocks(s, attachmentKind);
+    if (!pieces.some((p) => p.type !== 'text')) return prose(s, fontSize, baseLineHeight, color, style);
+    return (
+      <View style={box}>
+        {pieces.map((p, i) =>
+          p.type === 'text' ? (
+            <Fragment key={i}>{prose(p.text, fontSize, baseLineHeight, color, style)}</Fragment>
+          ) : p.type === 'embed' ? (
+            <EmbedBlock key={i} embeds={[p.embed]} path={path} t={t} />
+          ) : (
+            <MathBlock
+              key={i}
+              tex={p.text}
+              fontSize={fontSize}
+              color={t.text}
+              fallback={
+                <View style={[styles.code, { backgroundColor: t.cell }]}>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 11.5 * scale, lineHeight: 19.5 * scale, color: t.textSecondary }}>{p.text}</Text>
+                </View>
+              }
+            />
+          ),
+        )}
+      </View>
+    );
+  };
   switch (b.type) {
     case 'heading': {
       const style = b.level === 1 ? styles.h1 : b.level === 2 ? styles.h2 : styles.h3;
       return prose(b.text, style.fontSize, style.lineHeight, t.text, [style, !prev && { marginTop: 0 }]);
     }
-    case 'paragraph': {
-      const embeds = embedsOnly(b.text);
-      if (embeds) return <EmbedBlock embeds={embeds} path={path} t={t} />;
-      const pieces = splitDisplayMath(b.text);
-      if (!pieces.some((p) => p.type === 'math')) return prose(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
-      // Formulas written as `$$…$$` in a paragraph stand on their own, centered between the text around them.
-      return (
-        <View>
-          {pieces.map((p, i) =>
-            p.type === 'text' ? (
-              <Fragment key={i}>{prose(p.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p)}</Fragment>
-            ) : (
-              <MathBlock
-                key={i}
-                tex={p.text}
-                fontSize={styles.p.fontSize}
-                color={t.text}
-                fallback={
-                  <View style={[styles.code, { backgroundColor: t.cell }]}>
-                    <Text style={{ fontFamily: fonts.mono, fontSize: 11.5 * scale, lineHeight: 19.5 * scale, color: t.textSecondary }}>{p.text}</Text>
-                  </View>
-                }
-              />
-            ),
-          )}
-        </View>
-      );
-    }
+    case 'paragraph':
+      return rich(b.text, styles.p.fontSize, styles.p.lineHeight, t.textBody, styles.p);
     case 'bullet':
     case 'ordered':
       return (
@@ -276,7 +295,7 @@ function BlockContent({
           <Text style={[styles.liText, { color: t.accentText, minWidth: b.type === 'ordered' ? 18 : 8 }]}>
             {b.type === 'ordered' ? `${b.n}.` : '•'}
           </Text>
-          {prose(b.text, styles.liText.fontSize, styles.liText.lineHeight, t.textBody, [styles.liText, { flex: 1 }])}
+          {rich(b.text, styles.liText.fontSize, styles.liText.lineHeight, t.textBody, [styles.liText, { flex: 1 }], { flex: 1 })}
         </View>
       );
     case 'task': {
@@ -291,19 +310,20 @@ function BlockContent({
           accessibilityState={{ checked: b.checked }}
           style={[styles.task, { marginLeft: b.indent * 30, marginTop: top }]}>
           <Icon name={b.checked ? 'checkCircle' : 'circle'} size={size} color={b.checked ? t.accentText : t.textMuted} />
-          {prose(
+          {rich(
             b.text,
             nested ? 13.5 : 14.5,
             nested ? 19.5 : 21,
             b.checked ? t.textMuted : t.text,
             [{ flex: 1 }, b.checked && { textDecorationLine: 'line-through' }],
+            { flex: 1 },
           )}
         </Pressable>
       );
     }
     case 'quote':
       return (
-        <View style={[styles.quote, { backgroundColor: t.cell, borderLeftColor: t.accent }]}>{prose(b.text, 13.5 * scale, 21 * scale, t.textSecondary)}</View>
+        <View style={[styles.quote, { backgroundColor: t.cell, borderLeftColor: t.accent }]}>{rich(b.text, 13.5 * scale, 21 * scale, t.textSecondary)}</View>
       );
     case 'code': {
       const code = (
@@ -318,15 +338,6 @@ function BlockContent({
     case 'rule':
       return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
   }
-}
-
-type Embed = Extract<Inline, { type: 'embed' }>;
-
-/** The embeds of a paragraph made of nothing else, or null. */
-function embedsOnly(source: string): Embed[] | null {
-  if (!source.includes('![[')) return null;
-  const nodes = parseInline(source).filter((n) => !(n.type === 'text' && !n.text.trim()));
-  return nodes.length > 0 && nodes.every((n): n is Embed => n.type === 'embed') ? nodes : null;
 }
 
 /** `![[image.png]]` shows the image, `![[doc.pdf]]` a card that opens it; anything else stays a link. */
