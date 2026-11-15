@@ -33,8 +33,10 @@ export async function openPdf(path: string): Promise<void> {
   }
   try {
     const src = await kb.attachmentSource(path);
-    const file = await File.downloadFileAsync(src.uri, new File(Paths.cache, basename(path)), { headers: src.headers, idempotent: true });
-    await Share.share({ url: file.uri });
+    const uri = src.uri.startsWith('file:')
+      ? src.uri
+      : (await File.downloadFileAsync(src.uri, new File(Paths.cache, basename(path)), { headers: src.headers, idempotent: true })).uri;
+    await Share.share({ url: uri });
   } catch {
     showToast({ icon: 'doc', subject: basename(path), message: 'impossibile aprire il PDF' });
   }

@@ -43,6 +43,7 @@ import {
   type AuditRow,
   type Writer,
 } from './agents';
+import { deviceBlobs, type BlobStore } from './blob-store';
 import { deviceFiles, type LocalFiles } from './local-file';
 import { deviceMirror, type MirrorStore } from './mirror-store';
 import { idToken } from '@/auth/session';
@@ -261,6 +262,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   local: LocalFiles = deviceFiles;
   /** Where the mirror is kept between launches; tests swap it. */
   mirrorStore: MirrorStore = deviceMirror;
+  /** Where opened images and PDFs are kept; tests swap it. */
+  blobStore: BlobStore = deviceBlobs;
+  /** Downloads of attachments under way, so an image shown twice is fetched once. */
+  private savingBlobs = new Map<string, Promise<string>>();
   /** The mirror was restored from the device: reads are served from it while the server is asked in the background. */
   private hydrated = false;
   /** The server could not be reached: it is left alone until then. */
@@ -286,7 +291,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     const previous = this.userId;
     if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
     this.mirrorTimer = null;
-    if (previous) await this.mirrorStore.remove(previous);
+    if (previous) {
+      await this.mirrorStore.remove(previous);
+      await this.blobStore.clear(previous).catch(() => {});
+    }
     this.userId = id;
     this.hydrated = false;
     this.retryAt = 0;
@@ -915,7 +923,43 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     if (!token) throw new KBError('invalid', 'Accesso richiesto');
     const w = toWire(path);
     const query = new URLSearchParams({ path: w.path, ...(w.owner ? { owner: w.owner } : {}) });
-    return { uri: `${API_URL}/v1/blob?${query}`, headers: { authorization: `Bearer ${token}` } };
+    const remote = { uri: `${API_URL}/v1/blob?${query}`, headers: { authorization: `Bearer ${token}` } };
+    return (await this.savedAttachment(path, remote.uri, remote.headers)) ?? remote;
+  }
+
+  /**
+   * The copy of an attachment kept on the device: the current version when there is one, else it
+   * is downloaded and kept now. When the download fails (offline) an older saved version is
+   * better than nothing. Null when nothing can be served from the device (version unknown, no
+   * saved copy): the caller reads it from the server as before.
+   */
+  private async savedAttachment(path: string, url: string, headers: Record<string, string>): Promise<AttachmentSource | null> {
+    const id = this.userId;
+    const etag = this.files.get(path)?.etag ?? null;
+    if (!id) return null;
+    try {
+      if (etag) {
+        const hit = await this.blobStore.find(id, path, etag);
+        if (hit) return { uri: hit, headers: {} };
+        try {
+          const key = `${id}
+${path}
+${etag}`;
+          let saving = this.savingBlobs.get(key);
+          if (!saving) {
+            saving = this.blobStore.save(id, path, etag, url, headers).finally(() => this.savingBlobs.delete(key));
+            this.savingBlobs.set(key, saving);
+          }
+          return { uri: await saving, headers: {} };
+        } catch {
+          // Fall through to an older copy.
+        }
+      }
+      const old = await this.blobStore.find(id, path, null);
+      return old ? { uri: old, headers: {} } : null;
+    } catch {
+      return null;
+    }
   }
 
   async getFile(path: string): Promise<FileDocument> {
@@ -1061,10 +1105,8 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async attachmentRequest(path: string) {
-    const token = await idToken();
-    if (!token) throw new KBError('invalid', 'Accesso richiesto');
-    const w = toWire(path);
-    return { url: this.blobUrl(w), headers: { authorization: `Bearer ${token}` } };
+    const src = await this.attachmentSource(path);
+    return { url: src.uri, headers: src.headers };
   }
 
   private blobUrl(w: { owner: string | null; path: string }) {
@@ -1603,7 +1645,10 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     if (key) await AsyncStorage.removeItem(key).catch(() => {});
     if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
     this.mirrorTimer = null;
-    if (this.userId) await this.mirrorStore.remove(this.userId);
+    if (this.userId) {
+      await this.mirrorStore.remove(this.userId);
+      await this.blobStore.clear(this.userId).catch(() => {});
+    }
   }
 }
 

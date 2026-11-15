@@ -25,6 +25,11 @@ export function PdfView({ path }: { path: string }) {
     setFailed(false);
     (async () => {
       const src = await kb.attachmentSource(path);
+      // A copy kept on the device is shown as it is; otherwise it is downloaded (the request carries the token).
+      if (src.uri.startsWith('file:')) {
+        if (current) setUri(src.uri);
+        return;
+      }
       const dest = new File(Paths.cache, `preview-${basename(path)}`);
       const file = await File.downloadFileAsync(src.uri, dest, { headers: src.headers, idempotent: true });
       if (current) setUri(file.uri);
@@ -42,7 +47,8 @@ export function PdfView({ path }: { path: string }) {
     <WebView
       source={{ uri }}
       originWhitelist={['*']}
-      allowingReadAccessToURL={Paths.cache.uri}
+      // The folder holding the file: the cache (fresh download) or the saved copy kept for offline use.
+      allowingReadAccessToURL={uri.slice(0, uri.lastIndexOf('/') + 1)}
       // The header is transparent: start the first page below it (the inset follows it as it hides).
       contentInsetAdjustmentBehavior="automatic"
       onScroll={onScroll}
