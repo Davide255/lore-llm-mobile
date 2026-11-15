@@ -25,7 +25,6 @@ describe('planUpload', () => {
     const plan = planUpload('P', [
       { name: 'clip.mp4', size: 5 },
       { name: 'empty.png', size: 0 },
-      { name: 'big.png', size: 10 * MB + 1 },
       { name: 'long.md', size: MB + 1 },
       { name: 'noext', size: 5 },
       { name: 'unread.png', size: 5, skip: 'Non leggibile' },
@@ -34,15 +33,14 @@ describe('planUpload', () => {
     assert.deepEqual(plan.skipped.map((s) => s.reason), [
       UNSUPPORTED_TYPE,
       'File vuoto',
-      'Più grande di 10 MB',
       'Più grande di 1 MB',
       'Nome non valido',
       'Non leggibile',
     ]);
   });
 
-  it('allows exactly 10 MB for attachments and 1 MB for notes', () => {
-    const plan = planUpload('P', [{ name: 'a.png', size: 10 * MB }, { name: 'a.md', size: MB }], none);
+  it('allows attachments of any size and notes up to 1 MB', () => {
+    const plan = planUpload('P', [{ name: 'a.png', size: 500 * MB }, { name: 'a.md', size: MB }], none);
     assert.equal(plan.ok.length, 2);
   });
 

@@ -48,6 +48,15 @@ export async function checkForOtaUpdate({ force = false }: { force?: boolean } =
       otaPhase.set('current');
       return;
     }
+    // expo-updates downloads a manifest of any runtimeVersion but only launches one that
+    // matches the binary's, so a mismatched update would be fetched (and announced) on
+    // every start without ever being applied.
+    const remoteRuntime = (check.manifest as { runtimeVersion?: string } | undefined)?.runtimeVersion;
+    if (remoteRuntime && remoteRuntime !== Updates.runtimeVersion) {
+      console.warn(`[ota] ignoring update for runtime ${remoteRuntime} (this build: ${Updates.runtimeVersion})`);
+      otaPhase.set('current');
+      return;
+    }
     otaPhase.set('downloading');
     const fetched = await Updates.fetchUpdateAsync();
     if (!fetched.isNew) {

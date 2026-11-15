@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement, type ReactNode, type Ref } from 'react';
+import { Children, Fragment, isValidElement, type ComponentRef, type ReactNode, type Ref } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -30,7 +30,7 @@ export function Screen({
   ref,
   wide,
   ...rest
-}: ScrollViewProps & { children: ReactNode; ref?: Ref<ScrollView>; /** Use the whole width (e.g. a grid of cards). */ wide?: boolean }) {
+}: ScrollViewProps & { children: ReactNode; ref?: Ref<ComponentRef<typeof ScrollView>>; /** Use the whole width (e.g. a grid of cards). */ wide?: boolean }) {
   const t = useTheme();
   const split = useSplitLayout();
   // Devices with a side status/navigation strip (iPhone Duo) report it as a side inset.

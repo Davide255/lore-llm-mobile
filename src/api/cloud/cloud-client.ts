@@ -44,6 +44,7 @@ import {
   type Writer,
 } from './agents';
 import { deviceFiles, type LocalFiles } from './local-file';
+import { deviceMirror, type MirrorStore } from './mirror-store';
 import { idToken } from '@/auth/session';
 import { diffLines, diffStats } from '@/lib/diff';
 import { checklistProgress } from '@/lib/markdown';
@@ -172,6 +173,24 @@ const emptyState = (): Persisted => ({
   lastSyncAt: null,
 });
 
+/** What is kept on the device so the notes can be read without a connection (see `MirrorStore`). */
+interface MirrorSnapshot {
+  v: 1;
+  teams: Team[];
+  summaries: ProjectSummary[];
+  files: FileVersion[];
+  cache: { path: string; etag: string; content: string }[];
+  loaded: string[];
+  stars: Star[];
+}
+
+// How long the server is left alone after it could not be reached, while reads come from the device.
+const OFFLINE_RETRY_MS = 15_000;
+// Saving the mirror is delayed so a burst of changes writes it once.
+const MIRROR_SAVE_MS = 1500;
+
+const isOffline = (err: unknown) => err instanceof KBError && err.code === 'network';
+
 interface PendingDelete {
   path: string;
   kind: 'file' | 'folder';
@@ -240,6 +259,17 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   /** How picked files are read and sent; tests swap it. */
   local: LocalFiles = deviceFiles;
+  /** Where the mirror is kept between launches; tests swap it. */
+  mirrorStore: MirrorStore = deviceMirror;
+  /** The mirror was restored from the device: reads are served from it while the server is asked in the background. */
+  private hydrated = false;
+  /** The server could not be reached: it is left alone until then. */
+  private retryAt = 0;
+  private background: Promise<void> | null = null;
+  private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
+  private mirrorSaved = '';
+  /** Last starred list the server gave: stars are not in the mirror otherwise. */
+  private stars: Star[] = [];
 
   constructor() {
     setInterval(() => this.poll(), POLL_MS);
@@ -252,7 +282,16 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   /** Switch to the signed-in user's space (null on sign-out). */
   async setUser(id: string | null) {
     if (id === this.userId) return;
+    // Signing out (or switching account) takes the notes off the device with it.
+    const previous = this.userId;
+    if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
+    this.mirrorTimer = null;
+    if (previous) await this.mirrorStore.remove(previous);
     this.userId = id;
+    this.hydrated = false;
+    this.retryAt = 0;
+    this.mirrorSaved = '';
+    this.stars = [];
     this.state = emptyState();
     this.files = new Map();
     this.summaries = new Map();
@@ -272,6 +311,66 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     } catch {
       // Unreadable: start over, the server has the files.
     }
+    await this.restoreMirror(id);
+  }
+
+  /** Bring back the notes saved on the device, if any: the app can then be read before (or without) the server. */
+  private async restoreMirror(id: string) {
+    const raw = await this.mirrorStore.load(id).catch(() => null);
+    if (!raw || this.userId !== id) return;
+    try {
+      const m = JSON.parse(raw) as MirrorSnapshot;
+      if (m.v !== 1 || !Array.isArray(m.summaries) || !Array.isArray(m.files) || !Array.isArray(m.cache)) return;
+      this.teams = m.teams ?? [];
+      this.summaries = new Map(m.summaries.map((p) => [p.name, p]));
+      this.files = new Map(m.files.map((f) => [f.path, f]));
+      this.cache = new Map(m.cache.map((c) => [c.path, { etag: c.etag, content: c.content }]));
+      this.loaded = new Set(m.loaded ?? []);
+      this.stars = m.stars ?? [];
+      this.mirrorSaved = this.mirrorFingerprint();
+      this.hydrated = this.summaries.size > 0;
+    } catch {
+      // Damaged copy: ignore it, the server has the notes.
+    }
+  }
+
+  /** Cheap summary of what the mirror holds, to skip writing it when only unrelated state changed. */
+  private mirrorFingerprint() {
+    const parts: string[] = [];
+    for (const p of this.summaries.values()) parts.push(`p:${p.name}:${p.file_count}:${p.size}:${p.updated_at}:${p.teamId ?? ''}`);
+    for (const f of this.files.values()) parts.push(`f:${f.path}:${f.etag}`);
+    for (const [path, c] of this.cache) parts.push(`c:${path}:${c.etag}`);
+    for (const t of this.teams) parts.push(`t:${t.id}:${t.role}:${t.name}`);
+    for (const s of this.stars) parts.push(`s:${s.path}`);
+    parts.push(`l:${[...this.loaded].sort().join('|')}`);
+    return parts.join('\n');
+  }
+
+  private persistMirror() {
+    if (!this.userId) return;
+    if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
+    const id = this.userId;
+    this.mirrorTimer = setTimeout(() => {
+      this.mirrorTimer = null;
+      if (this.userId !== id) return;
+      const fingerprint = this.mirrorFingerprint();
+      if (fingerprint === this.mirrorSaved) return;
+      const snapshot: MirrorSnapshot = {
+        v: 1,
+        teams: this.teams,
+        summaries: [...this.summaries.values()],
+        files: [...this.files.values()],
+        cache: [...this.cache].map(([path, c]) => ({ path, ...c })),
+        loaded: [...this.loaded],
+        stars: this.stars,
+      };
+      this.mirrorStore
+        .save(id, JSON.stringify(snapshot))
+        .then(() => {
+          this.mirrorSaved = fingerprint;
+        })
+        .catch(() => {});
+    }, MIRROR_SAVE_MS);
   }
 
   private storageKey() {
@@ -281,6 +380,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   private persist() {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     if (!this.userId) return;
+    this.persistMirror();
     const key = this.storageKey();
     const state = this.state;
     this.saveTimer = setTimeout(() => {
@@ -306,7 +406,13 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     route: string,
     opts: { query?: Record<string, string | number | undefined>; body?: unknown } = {},
   ): Promise<T> {
-    const token = await idToken();
+    let token: string | null;
+    try {
+      token = await idToken();
+    } catch {
+      // The token is expired and cannot be renewed (no connection): same as the server being out of reach.
+      throw new KBError('network', 'Server Lore non raggiungibile');
+    }
     if (!token) throw new KBError('invalid', 'Accesso richiesto');
     const params = Object.entries(opts.query ?? {})
       .filter(([, v]) => v !== undefined)
@@ -470,9 +576,12 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     let pending = this.loading.get(project);
     if (!pending) {
       pending = (async () => {
-        await this.ready();
+        await this.readyForRead();
         // Unknown names (a project not created yet) have nothing to load.
-        if (!this.loaded.has(project) && this.projectNames().includes(project)) await this.syncProject(project);
+        if (!this.loaded.has(project) && this.projectNames().includes(project)) {
+          await this.syncProject(project);
+          this.persistMirror();
+        }
       })().finally(() => this.loading.delete(project));
       this.loading.set(project, pending);
     }
@@ -528,6 +637,36 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   /**
+   * Readiness for reading. With notes saved on the device it does not wait for the server:
+   * the saved copy answers at once while the server is asked in the background (and the app
+   * told with `changed` when it answered), so a slow or missing connection never blocks reading.
+   * Without a saved copy (first launch) it is `ready()`.
+   */
+  private readyForRead(): Promise<void> {
+    if (!this.hydrated) return this.ready();
+    this.refreshInBackground();
+    return Promise.resolve();
+  }
+
+  private refreshInBackground() {
+    if (this.primed || this.background || !this.userId || Date.now() < this.retryAt) return;
+    const id = this.userId;
+    this.background = this.ready()
+      // The saved files of the opened projects are checked against the server too.
+      .then(() => this.reconcile(true))
+      .then((paths) => {
+        if (this.userId === id) this.emit({ type: 'changed', paths });
+      })
+      .catch(() => {
+        // Offline (or the session is gone): keep reading the saved copy and try again later.
+        this.retryAt = Date.now() + OFFLINE_RETRY_MS;
+      })
+      .finally(() => {
+        this.background = null;
+      });
+  }
+
+  /**
    * Pick up what changed on the server: new audit rows (agent writes), then
    * the files. A change with a matching new audit row is the agent's and is
    * kept with its diff; anything else came from the user's other apps.
@@ -567,6 +706,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   private async poll() {
+    if (this.userId && !this.primed && this.hydrated && AppState.currentState === 'active') this.refreshInBackground();
     if (!this.userId || !this.primed || this.reconciling || AppState.currentState !== 'active') return;
     try {
       await this.primed;
@@ -703,7 +843,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   // ─── browse ───────────────────────────────────────────────────────────────
 
   async getSummary() {
-    await this.ready();
+    await this.readyForRead();
     const projects = [...this.summaries.values()];
     return {
       projectCount: this.projectNames().length,
@@ -713,14 +853,14 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async listProjects() {
-    await this.ready();
+    await this.readyForRead();
     return this.projectNames()
       .map((n) => this.toProject(n))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.name.localeCompare(b.name));
   }
 
   async getProject(name: string) {
-    await this.ready();
+    await this.readyForRead();
     if (!this.allFolders().has(name)) throw new KBError('not_found', `Progetto "${name}" non trovato`);
     return this.toProject(name);
   }
@@ -758,10 +898,16 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
 
   async listFiles(project: string) {
     const { name, teamId } = parseProjectKey(project);
-    const { files } = await this.request<{ files: { path: string }[] }>('GET', '/v1/files', {
-      query: { project: name, attachments: 1, ...(teamId ? { owner: `t:${teamId}` } : {}) },
-    });
-    return files.map((f) => fromWire(teamId, f.path)).sort();
+    try {
+      const { files } = await this.request<{ files: { path: string }[] }>('GET', '/v1/files', {
+        query: { project: name, attachments: 1, ...(teamId ? { owner: `t:${teamId}` } : {}) },
+      });
+      return files.map((f) => fromWire(teamId, f.path)).sort();
+    } catch (err) {
+      // Offline: what was mirrored of a project that was opened is its listing.
+      if (isOffline(err) && this.loaded.has(project)) return this.filesUnder(project).sort();
+      throw err;
+    }
   }
 
   async attachmentSource(path: string): Promise<AttachmentSource> {
@@ -773,8 +919,18 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   }
 
   async getFile(path: string): Promise<FileDocument> {
-    await this.ready();
-    const f = await this.fileRequest<FileVersion & { content: string }>('GET', '/v1/file', path);
+    await this.readyForRead();
+    let f: FileVersion & { content: string };
+    try {
+      f = await this.fileRequest<FileVersion & { content: string }>('GET', '/v1/file', path);
+    } catch (err) {
+      // Offline: the copy downloaded earlier is the note.
+      const saved = this.cache.get(path);
+      const meta = this.files.get(path);
+      if (!isOffline(err)) throw err;
+      if (!saved || !meta) throw new KBError('network', 'Questa nota non è stata scaricata: collegati per leggerla');
+      return this.documentOf(path, saved.content, meta);
+    }
     const cached = this.cache.get(path);
     // Opening a file is also a chance to notice an agent edit (and keep its diff).
     if (cached && cached.etag !== f.etag && this.state.authors[path] !== f.etag) {
@@ -783,24 +939,29 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     }
     this.cache.set(path, { etag: f.etag, content: f.content });
     this.files.set(path, { path, size: f.size, uploaded: f.uploaded, etag: f.etag });
+    this.persistMirror();
+    return this.documentOf(path, f.content, f);
+  }
+
+  private documentOf(path: string, content: string, f: FileVersion): FileDocument {
     const role = roleOf(path);
     return {
       path,
       name: basename(path),
       project: projectOf(path),
       role,
-      content: f.content,
+      content,
       size: f.size,
       updatedAt: f.uploaded,
       version: f.etag,
       access: this.roleIn(path),
       ...this.authorOf(path),
-      tokenCount: role === 'index' ? Math.round(f.content.length / 3.6) : undefined,
+      tokenCount: role === 'index' ? Math.round(content.length / 3.6) : undefined,
     };
   }
 
   async listRecentFiles(limit = 5) {
-    await this.ready();
+    await this.readyForRead();
     return this.state.recentFiles
       // Files of projects that were not opened yet cannot be checked: keep them if their project exists.
       .filter((r) => (this.loaded.has(projectOf(r.path)) ? this.files.has(r.path) : this.projectNames().includes(projectOf(r.path))))
@@ -1079,7 +1240,7 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
   // ─── search ───────────────────────────────────────────────────────────────
 
   async search(query: string, project?: string | null): Promise<SearchResponse> {
-    await this.ready();
+    await this.readyForRead();
     const q = query.trim();
     if (!q) return { query, totalMatches: 0, hits: [], byProject: [] };
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -1095,7 +1256,12 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     );
     const done = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     // A team the user just left may refuse; fail only when no space answered.
-    if (!done.length) throw (settled[0] as PromiseRejectedResult).reason;
+    if (!done.length) {
+      const reason = (settled[0] as PromiseRejectedResult).reason;
+      // Offline: look through the notes saved on the device.
+      if (isOffline(reason)) return this.searchSaved(query, terms, project ?? null);
+      throw reason;
+    }
 
     const all: SearchHit[] = done.flatMap(({ teamId, hits }) =>
       hits.map((h) => {
@@ -1123,16 +1289,55 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     };
   }
 
+  /** Search over the notes saved on the device (every term must appear in the path or the text), used when the server cannot be reached. */
+  private searchSaved(query: string, terms: string[], project: string | null): SearchResponse {
+    const all: SearchHit[] = [];
+    for (const [path, { content }] of this.cache) {
+      if (roleOf(path) === 'index') continue;
+      const haystack = `${path}\n${content}`.toLowerCase();
+      if (!terms.every((t) => haystack.includes(t))) continue;
+      const lines = content.split(/\r?\n/);
+      const hit = lines.filter((l) => terms.some((t) => l.toLowerCase().includes(t)));
+      all.push({
+        path,
+        name: basename(path),
+        project: projectOf(path),
+        role: roleOf(path),
+        snippet: makeSnippet(hit[0] ?? basename(path), terms),
+        extraMatches: Math.max(0, hit.length - 1),
+      });
+    }
+    const byProject = new Map<string, number>();
+    all.forEach((h) => byProject.set(h.project, (byProject.get(h.project) ?? 0) + 1));
+    const hits = (project ? all.filter((h) => h.project === project) : all).sort(
+      (a, b) => b.extraMatches - a.extraMatches || a.path.localeCompare(b.path),
+    );
+    return {
+      query,
+      totalMatches: hits.reduce((n, h) => n + 1 + h.extraMatches, 0),
+      hits,
+      byProject: [...byProject.entries()].map(([p, matches]) => ({ project: p, matches })).sort((a, b) => b.matches - a.matches),
+    };
+  }
+
   // ─── stars ────────────────────────────────────────────────────────────────
 
   async listStars(): Promise<Star[]> {
-    await this.ready();
-    const { stars } = await this.request<{ stars: ServerStar[] }>('GET', '/v1/stars');
-    return stars.map((s) => ({
-      path: fromWire(s.owner?.startsWith('t:') ? s.owner.slice(2) : null, s.path),
-      kind: s.kind,
-      starredAt: s.starred_at,
-    }));
+    await this.readyForRead();
+    try {
+      const { stars } = await this.request<{ stars: ServerStar[] }>('GET', '/v1/stars');
+      this.stars = stars.map((s) => ({
+        path: fromWire(s.owner?.startsWith('t:') ? s.owner.slice(2) : null, s.path),
+        kind: s.kind,
+        starredAt: s.starred_at,
+      }));
+      this.persistMirror();
+      return this.stars;
+    } catch (err) {
+      // Offline: the list as it was last seen.
+      if (isOffline(err)) return this.stars;
+      throw err;
+    }
   }
 
   async setStar(path: string, starred: boolean): Promise<void> {
@@ -1396,6 +1601,9 @@ export class CloudKnowledgeBaseClient implements KnowledgeBaseClient {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     if (key) await AsyncStorage.removeItem(key).catch(() => {});
+    if (this.mirrorTimer) clearTimeout(this.mirrorTimer);
+    this.mirrorTimer = null;
+    if (this.userId) await this.mirrorStore.remove(this.userId);
   }
 }
 

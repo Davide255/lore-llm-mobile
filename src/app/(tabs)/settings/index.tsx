@@ -8,6 +8,7 @@ import { AgentAvatar, initialsOf } from '@/components/identity';
 import { Cell, IconWell, Screen, Section } from '@/components/ui';
 import { actions, attempt, useAgents, useSettings, useSummary, useTeams } from '@/data/hooks';
 import { fileSize, plural, relativeTime } from '@/lib/format';
+import { studyProfiles } from '@/data/study';
 import { checkForOtaUpdate, currentOtaLabel, otaEnabled, otaPhase as otaPhaseSignal, type OtaPhase } from '@/lib/ota';
 import { routes } from '@/lib/routes';
 import { useTheme } from '@/theme';
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
   const appearance = useAppearance();
   const textScale = useTextScale();
   const otaPhase = otaPhaseSignal.useValue();
+  const profiles = studyProfiles.useValue();
   const [syncing, setSyncing] = useState(false);
   const s = settings.data;
   const otaBusy = otaPhase === 'checking' || otaPhase === 'downloading';
@@ -79,6 +81,16 @@ export default function SettingsScreen() {
             subtitle={agents.data?.length ? plural(agents.data.length, 'agente collegato', 'agenti collegati') : 'Collega Claude o un altro agente'}
             chevron
             onPress={() => router.push(routes.settings('agents'))}
+          />
+        </Section>
+
+        <Section header="Studio">
+          <Cell
+            icon={<IconWell name="school" />}
+            title="Profili di valutazione"
+            subtitle={profiles.length === 1 ? profiles[0]!.name : `${profiles.length} profili · ${profiles.slice(0, 2).map((p) => p.name).join(', ')}${profiles.length > 2 ? '…' : ''}`}
+            chevron
+            onPress={() => router.push(routes.studyProfiles())}
           />
         </Section>
 

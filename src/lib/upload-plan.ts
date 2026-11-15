@@ -1,11 +1,10 @@
 /**
  * Uploading from the device: which picked files go up and under what name. The rules are the
  * desktop app's (`electron/upload.cjs`) and mirror what the Worker accepts: notes up to 1 MB and
- * attachments of these types up to 10 MB.
+ * attachments of these types of any size.
  */
 
 export const ATTACHMENT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf'] as const;
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_NOTE_BYTES = 1024 * 1024;
 const MAX_PATH = 512;
 const MAX_SEGMENT = 128;
@@ -95,9 +94,7 @@ export function planUpload(target: string, files: UploadCandidate[], exists: (re
     const note = ext === 'md';
     if (!note && !isAttachment(clean)) return void skipped.push({ name: shown, reason: UNSUPPORTED_TYPE });
     if (!(f.size > 0)) return void skipped.push({ name: shown, reason: 'File vuoto' });
-    if (f.size > (note ? MAX_NOTE_BYTES : MAX_ATTACHMENT_BYTES)) {
-      return void skipped.push({ name: shown, reason: note ? 'Più grande di 1 MB' : 'Più grande di 10 MB' });
-    }
+    if (note && f.size > MAX_NOTE_BYTES) return void skipped.push({ name: shown, reason: 'Più grande di 1 MB' });
     if (ok.length >= MAX_FILES) return void skipped.push({ name: shown, reason: `Oltre il limite di ${MAX_FILES} file per caricamento` });
     const parent = [target, ...folders].join('/');
     const name = uniqueName(parent, clean, isTaken);

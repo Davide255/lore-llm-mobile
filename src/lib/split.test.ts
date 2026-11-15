@@ -25,6 +25,8 @@ describe('sidebarSelection', () => {
   it('maps tab routes to their section', () => {
     assert.deepEqual(sidebarSelection('/'), { section: 'projects', path: null });
     assert.deepEqual(sidebarSelection('/activity'), { section: 'activity', path: null });
+    assert.deepEqual(sidebarSelection('/study'), { section: 'study', path: null });
+    assert.deepEqual(sidebarSelection('/study-session/quiz'), { section: 'study', path: null });
     assert.deepEqual(sidebarSelection('/change/42'), { section: 'activity', path: null });
     assert.deepEqual(sidebarSelection('/settings'), { section: 'settings', path: null });
     assert.deepEqual(sidebarSelection('/agent/a1'), { section: 'settings', path: null });

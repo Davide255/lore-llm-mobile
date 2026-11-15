@@ -66,7 +66,9 @@ export function useQuery<T>(key: string | null, fetcher: () => Promise<T>) {
     },
     [key],
   );
-  const snap = useSyncExternalStore(subscribe, () => (key ? (cache.get(key) ?? EMPTY) : EMPTY)) as Snapshot<T>;
+  const read = () => (key ? (cache.get(key) ?? EMPTY) : EMPTY);
+  // Third argument: the web build renders on the server too (static output), which needs a server snapshot.
+  const snap = useSyncExternalStore(subscribe, read, read) as Snapshot<T>;
 
   useEffect(() => {
     if (!key) return;
@@ -139,6 +141,7 @@ export function createSignal<T>(initial: T) {
             subs.delete(cb);
           };
         },
+        () => value,
         () => value,
       );
     },

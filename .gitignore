@@ -7,6 +7,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+/build/
 expo-env.d.ts
 
 # Native
@@ -48,3 +49,4 @@ example
 
 # Live updates (OTA): staged bundles. The signing key lives in ~/.lore-llm-ota, never in the repo.
 ota-dist/
+build/

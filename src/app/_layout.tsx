@@ -12,6 +12,7 @@ import { ContentPane, SidebarReveal, SidebarShell } from '@/components/sidebar-s
 import { stackOptions } from '@/components/stack-options';
 import { ToastHost } from '@/components/toast';
 import { resetQueries } from '@/data/store';
+import { loadStudyPrefs } from '@/data/study';
 import { resetUploads } from '@/data/uploads';
 import { startOtaUpdates } from '@/lib/ota';
 import { brand, useTheme } from '@/theme';
@@ -51,6 +52,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
+  // A study session cut short when the app was last closed picks up where it was.
+  useEffect(() => {
+    if (ready && space) loadStudyPrefs();
+  }, [ready, space]);
   if (!ready) return null;
   const signedIn = space !== null;
 
@@ -99,6 +104,8 @@ export default function RootLayout() {
                     name="move-to-team"
                     options={{ presentation: 'formSheet', headerShown: false, sheetAllowedDetents: 'fitToContents', sheetGrabberVisible: true, sheetCornerRadius: 24 }}
                   />
+                  <Stack.Screen name="study-setup" options={{ presentation: 'modal', headerShown: false }} />
+                  <Stack.Screen name="study-session" options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }} />
                   <Stack.Screen name="connect-agent" options={{ presentation: 'modal', title: 'Collega un agente' }} />
                   <Stack.Screen name="new-team" options={{ presentation: 'modal', title: 'Nuovo team' }} />
                   <Stack.Screen name="invite-member" options={{ presentation: 'modal', title: 'Invita nel team' }} />
