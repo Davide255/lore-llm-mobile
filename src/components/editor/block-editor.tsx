@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, TextInput, View, type TextStyle } from 're
 
 import { applyFormat, asParagraph, continuation, toBlocks, type BlockFormat, type EditBlock } from './model';
 import { Icon } from '../icon';
+import { RenderedBlock } from '../markdown';
+import { hasRichInline } from '@/lib/markdown';
 import { fonts, useTheme, type Theme } from '@/theme';
 
 export interface BlockEditorHandle {
@@ -24,25 +26,36 @@ type Selection = { start: number; end: number };
 export function BlockEditor({
   blocks,
   onChange,
+  path,
   ref,
 }: {
   blocks: EditBlock[];
   onChange: (blocks: EditBlock[]) => void;
+  /** The file being edited, to resolve the images and links in the blocks that are drawn. */
+  path: string;
   ref?: Ref<BlockEditorHandle>;
 }) {
   const t = useTheme();
   const inputs = useRef(new Map<string, TextInput>());
   const selections = useRef(new Map<string, Selection>());
   const [focused, setFocused] = useState<string | null>(null);
+  /** The block whose text field is active: the others with formulas or images are drawn, not typed. */
+  const [editing, setEditing] = useState<string | null>(null);
   const focusedRef = useRef<string | null>(null);
 
-  const focusAt = (id: string, offset?: number) => {
+  const focusAt = (id: string, offset?: number, tries = 0) => {
+    setEditing(id);
     requestAnimationFrame(() => {
       const input = inputs.current.get(id);
-      input?.focus();
+      if (!input) {
+        // A drawn block is turning into a text field: wait for it to mount.
+        if (tries < 10) setTimeout(() => focusAt(id, offset, tries + 1), 30);
+        return;
+      }
+      input.focus();
       if (offset !== undefined) {
         selections.current.set(id, { start: offset, end: offset });
-        input?.setSelection(offset, offset);
+        input.setSelection(offset, offset);
       }
     });
   };
@@ -131,6 +144,10 @@ export function BlockEditor({
           block={b}
           first={i === 0}
           focused={focused === b.id}
+          drawn={editing !== b.id && isDrawn(b)}
+          path={path}
+          onEdit={() => focusAt(b.id, 'text' in b ? b.text.length : 0)}
+          onBlur={() => setEditing((id) => (id === b.id ? null : id))}
           t={t}
           inputRef={(r) => {
             if (r) inputs.current.set(b.id, r);
@@ -142,6 +159,7 @@ export function BlockEditor({
           onFocus={() => {
             focusedRef.current = b.id;
             setFocused(b.id);
+            setEditing(b.id);
           }}
           onToggle={() => update(b.id, (x) => (x.type === 'task' ? { ...x, checked: !x.checked } : x))}
         />
@@ -150,10 +168,18 @@ export function BlockEditor({
   );
 }
 
+/** Whether a block has a formula or an image in it, so that it is drawn while it is not being edited. */
+const isDrawn = (b: EditBlock) =>
+  b.type === 'code' ? b.lang === 'math' && !!b.text.trim() : b.type !== 'rule' && b.type !== 'table' && hasRichInline(b.text);
+
 function BlockRow({
   block: b,
   first,
   focused,
+  drawn,
+  path,
+  onEdit,
+  onBlur,
   t,
   inputRef,
   onChangeText,
@@ -165,6 +191,11 @@ function BlockRow({
   block: EditBlock;
   first: boolean;
   focused: boolean;
+  /** Show the block as the reader does instead of a text field (until it is tapped). */
+  drawn: boolean;
+  path: string;
+  onEdit: () => void;
+  onBlur: () => void;
   t: Theme;
   inputRef: (r: TextInput | null) => void;
   onChangeText: (text: string) => void;
@@ -175,6 +206,15 @@ function BlockRow({
 }) {
   if (b.type === 'rule') {
     return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
+  }
+
+  if (drawn) {
+    const indent = 'indent' in b ? b.indent * 20 : 0;
+    return (
+      <Pressable onPress={onEdit} accessibilityHint="Tocca per modificare" style={[styles.drawn, { marginLeft: indent }]}>
+        <RenderedBlock block={b} path={path} />
+      </Pressable>
+    );
   }
 
   const textStyle: TextStyle = (() => {
@@ -214,6 +254,7 @@ function BlockRow({
       value={b.text}
       onChangeText={onChangeText}
       onFocus={onFocus}
+      onBlur={onBlur}
       onSelectionChange={(e) => onSelectionChange(e.nativeEvent.selection)}
       onKeyPress={(e) => {
         if (e.nativeEvent.key === 'Backspace') onBackspaceAtStart();
@@ -254,5 +295,6 @@ function BlockRow({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: 8, paddingHorizontal: 5, marginHorizontal: -5 },
   marker: { fontSize: 14.5, lineHeight: 21.5, paddingTop: 5 },
+  drawn: { paddingHorizontal: 5, marginHorizontal: -5, paddingVertical: 2 },
   input: { paddingVertical: 4, paddingHorizontal: 0, margin: 0, textAlignVertical: 'top' },
 });

@@ -286,7 +286,7 @@ function Editor({ initial }: { initial: FileDocument }) {
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: FLOATING_TOOLBAR_HEIGHT + 40 }}>
           {mode === 'preview' ? (
-            <BlockEditor ref={blockRef} blocks={blocks} onChange={changeBlocks} />
+            <BlockEditor ref={blockRef} blocks={blocks} onChange={changeBlocks} path={doc.path} />
           ) : (
             <SourceEditor ref={sourceRef} value={source} onChange={changeSource} />
           )}

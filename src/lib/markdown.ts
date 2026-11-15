@@ -382,6 +382,52 @@ export function splitDisplayMath(src: string): Piece[] {
   return out;
 }
 
+export type Embed = Extract<Inline, { type: 'embed' }>;
+export type LayoutPiece = Piece | { type: 'embed'; embed: Embed };
+
+/**
+ * A text cut at what stands on its own line: `$$…$$` formulas and the `![[file]]` embeds that
+ * `isFile` accepts (images and PDFs; an embed of anything else, like another note, stays a link in the text).
+ */
+export function layoutBlocks(src: string, isFile: (target: string) => unknown): LayoutPiece[] {
+  const out: LayoutPiece[] = [];
+  let buf = '';
+  const flush = () => {
+    if (buf.trim()) out.push({ type: 'text', text: buf.trim() });
+    buf = '';
+  };
+  let rest = src;
+  while (rest) {
+    const m = rest.match(INLINE);
+    if (!m || m.index === undefined) {
+      buf += rest;
+      break;
+    }
+    const tok = m[0];
+    const embed = m[9] ? parseInline(tok).find((n): n is Embed => n.type === 'embed') : undefined;
+    if (m[3]) {
+      buf += rest.slice(0, m.index);
+      flush();
+      out.push({ type: 'math', text: tok.slice(2, -2).trim() });
+    } else if (embed && isFile(embed.target)) {
+      buf += rest.slice(0, m.index);
+      flush();
+      out.push({ type: 'embed', embed });
+    } else buf += rest.slice(0, m.index + tok.length);
+    rest = rest.slice(m.index + tok.length);
+  }
+  flush();
+  return out;
+}
+
+/** Whether a text holds a formula (inline or display) or an embed, i.e. something that is drawn rather than typed. */
+export function hasRichInline(src: string): boolean {
+  if (!/\$|\\\(|!\[\[/.test(src)) return false;
+  const walk = (nodes: Inline[]): boolean =>
+    nodes.some((n) => n.type === 'math' || n.type === 'embed' || ('children' in n && walk(n.children)));
+  return walk(parseInline(src));
+}
+
 export function plainText(src: string): string {
   const walk = (nodes: Inline[]): string =>
     nodes.map((n) => ('children' in n ? walk(n.children) : n.type === 'wiki' || n.type === 'embed' ? n.label : n.text)).join('');
