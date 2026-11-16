@@ -44,27 +44,35 @@ export function useAutoHideHeader() {
   );
 }
 
-/**
- * Full reading mode: a tap in the middle of the screen hides the native header, the next one
- * brings it back. Returns an `onPress` for a Pressable wrapping the content; links, tasks and
- * images inside keep their own taps (the innermost touchable wins), and scrolling cancels it.
- */
-export function useTapToggleHeader() {
+/** Hides the native header if shown and shows it if hidden; back on when the screen unmounts. */
+export function useHeaderToggle() {
   const navigation = useNavigation();
   const shown = useRef(true);
 
   // Leave the header visible if the screen unmounts while it is hidden.
   useEffect(() => () => navigation.setOptions({ headerShown: true }), [navigation]);
 
+  return useCallback(() => {
+    shown.current = !shown.current;
+    navigation.setOptions({ headerShown: shown.current });
+  }, [navigation]);
+}
+
+/**
+ * Full reading mode: a tap in the middle of the screen hides the native header, the next one
+ * brings it back. Returns an `onPress` for a Pressable wrapping the content; links, tasks and
+ * images inside keep their own taps (the innermost touchable wins), and scrolling cancels it.
+ */
+export function useTapToggleHeader() {
+  const toggle = useHeaderToggle();
   return useCallback(
     (e: GestureResponderEvent) => {
       // Only the middle band: the edges are where the bar and the home indicator live.
       const { height } = Dimensions.get('window');
       const y = e.nativeEvent.pageY;
       if (y < height * 0.2 || y > height * 0.8) return;
-      shown.current = !shown.current;
-      navigation.setOptions({ headerShown: shown.current });
+      toggle();
     },
-    [navigation],
+    [toggle],
   );
 }
