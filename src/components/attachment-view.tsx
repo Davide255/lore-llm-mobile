@@ -2,7 +2,9 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Platform, Text, View } from 'react-native';
 
+import { canShareAttachment, shareAttachment } from './attachment';
 import { useAutoHideHeader } from './auto-hide-header';
+import { HeaderItems } from './header-items';
 import { PdfView, canPreviewPdf } from './pdf-view';
 import { EmptyState, ErrorState, HeaderTitle, Loading, Screen } from './ui';
 import { kb } from '@/api';
@@ -44,6 +46,7 @@ export function AttachmentView({ path }: { path: string }) {
   return (
     <>
       <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={name} subtitle={subtitle} />, headerBlurEffect: 'systemMaterial' }} />
+      {canShareAttachment && <HeaderItems right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => shareAttachment(path) }]} />}
       {folder.loading ? (
         <Loading />
       ) : folder.error ? (
