@@ -1,8 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
-import { useAutoHideHeader } from '@/components/auto-hide-header';
+import { useHeaderToggle } from '@/components/auto-hide-header';
 import { Icon } from '@/components/icon';
 import { openPdf, useAttachmentSource } from '@/components/attachment';
 import { HeaderItems } from '@/components/header-items';
@@ -12,34 +12,23 @@ import { attachmentKind } from '@/lib/attachments';
 import { basename } from '@/lib/paths';
 import { pathParam } from '@/lib/routes';
 import { useTheme } from '@/theme';
+import { ZoomableImage } from '@/components/zoomable-image';
 
-/** An image (pinch to zoom) or a PDF (shown in-app on iOS, otherwise opened by the system) attached to a project. */
+/** An image (pinch or double tap to zoom, tap to hide the header) or a PDF (shown in-app on iOS, otherwise opened by the system) attached to a project. */
 export default function AttachmentScreen() {
   const t = useTheme();
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
   const kind = attachmentKind(path);
   const source = useAttachmentSource(path);
-  const { width, height } = useWindowDimensions();
   const [opening, setOpening] = useState(false);
-  const onScroll = useAutoHideHeader();
+  const toggleHeader = useHeaderToggle();
 
   return (
     <View style={{ flex: 1, backgroundColor: t.background }}>
       <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={basename(path)} />, headerBlurEffect: 'systemMaterial' }} />
       {kind === 'image' ? (
         source ? (
-          <ScrollView
-            maximumZoomScale={5}
-            minimumZoomScale={1}
-            centerContent
-            contentInsetAdjustmentBehavior="automatic"
-            onScroll={onScroll}
-            scrollEventThrottle={16}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
-            <Image source={{ uri: source.uri, headers: source.headers }} resizeMode="contain" style={{ width, height: height * 0.8 }} />
-          </ScrollView>
+          <ZoomableImage source={{ uri: source.uri, headers: source.headers }} onTap={toggleHeader} accessibilityLabel={basename(path)} />
         ) : (
           <ActivityIndicator style={{ flex: 1 }} />
         )

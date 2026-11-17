@@ -1,8 +1,9 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, type ComponentRef } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentView } from '@/components/attachment-view';
+import { useTapToggleHeader } from '@/components/auto-hide-header';
 import { HeaderItems, type MenuItem } from '@/components/header-items';
 import { confirmDelete, duplicateEntry, shareEntry, starItem } from '@/components/entry-actions';
 import { MarkdownView } from '@/components/markdown';
@@ -33,6 +34,7 @@ function NoteScreen({ path }: { path: string }) {
   const doc = file.data;
   const textScale = useTextScale();
   const starred = !!useStars().data?.some((s) => s.path === path);
+  const toggleHeader = useTapToggleHeader();
 
   useEffect(() => {
     actions.markOpened(path).catch(() => {});
@@ -71,46 +73,49 @@ function NoteScreen({ path }: { path: string }) {
           ref={scroll}
           contentContainerStyle={{ paddingTop: 14 }}
           refreshControl={<RefreshControl refreshing={file.refreshing} onRefresh={file.refresh} />}>
-          {doc.role === 'index' && (
-            <Banner icon="lock" style={{ marginBottom: 18 }}>
-              Indice generato automaticamente. Non modificabile.
-            </Banner>
-          )}
-          {doc.role !== 'index' && !canWrite(doc.access) && (
-            <Banner icon="lock" tone="neutral" style={{ marginBottom: 18 }}>
-              Sola lettura: sei lettore in questo team.
-            </Banner>
-          )}
-          {doc.author === 'agent' && (
-            <View style={styles.editedBy}>
-              <AgentAvatar agent={doc.agent} size={18} round />
-              <Text style={{ fontSize: 12, color: t.textSecondary, flexShrink: 1 }} numberOfLines={1}>
-                Modificato da {doc.agent?.name ?? 'un agente'} · {relativeTime(doc.updatedAt)}
-              </Text>
-            </View>
-          )}
-          {progress && progress.total > 0 && <ProgressBar value={progress.done / progress.total} height={5} style={{ marginBottom: 16 }} />}
+          {/* A tap in the middle of the note toggles full reading mode (header hidden). */}
+          <Pressable onPress={toggleHeader} accessible={false}>
+            {doc.role === 'index' && (
+              <Banner icon="lock" style={{ marginBottom: 18 }}>
+                Indice generato automaticamente. Non modificabile.
+              </Banner>
+            )}
+            {doc.role !== 'index' && !canWrite(doc.access) && (
+              <Banner icon="lock" tone="neutral" style={{ marginBottom: 18 }}>
+                Sola lettura: sei lettore in questo team.
+              </Banner>
+            )}
+            {doc.author === 'agent' && (
+              <View style={styles.editedBy}>
+                <AgentAvatar agent={doc.agent} size={18} round />
+                <Text style={{ fontSize: 12, color: t.textSecondary, flexShrink: 1 }} numberOfLines={1}>
+                  Modificato da {doc.agent?.name ?? 'un agente'} · {relativeTime(doc.updatedAt)}
+                </Text>
+              </View>
+            )}
+            {progress && progress.total > 0 && <ProgressBar value={progress.done / progress.total} height={5} style={{ marginBottom: 16 }} />}
 
-          <MarkdownView
-            content={doc.content}
-            path={doc.path}
-            anchor={params.heading}
-            onAnchor={(y) => scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: true })}
-            onToggleTask={
-              doc.role === 'index' || !canWrite(doc.access)
-                ? undefined
-                : (line) => attempt(() => actions.toggleTask(doc, line), 'Impossibile aggiornare la checklist')
-            }
-          />
+            <MarkdownView
+              content={doc.content}
+              path={doc.path}
+              anchor={params.heading}
+              onAnchor={(y) => scroll.current?.scrollTo({ y: Math.max(0, y - 8), animated: true })}
+              onToggleTask={
+                doc.role === 'index' || !canWrite(doc.access)
+                  ? undefined
+                  : (line) => attempt(() => actions.toggleTask(doc, line), 'Impossibile aggiornare la checklist')
+              }
+            />
 
-          {doc.role === 'index' && (
-            <>
-              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />
-              <Text style={{ fontSize: 12, color: t.textMuted }}>
-                {`Rigenerato ${relativeTime(doc.updatedAt)} · ${thousands(doc.tokenCount ?? 0)} token`}
-              </Text>
-            </>
-          )}
+            {doc.role === 'index' && (
+              <>
+                <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />
+                <Text style={{ fontSize: 12, color: t.textMuted }}>
+                  {`Rigenerato ${relativeTime(doc.updatedAt)} · ${thousands(doc.tokenCount ?? 0)} token`}
+                </Text>
+              </>
+            )}
+          </Pressable>
         </Screen>
       )}
     </>

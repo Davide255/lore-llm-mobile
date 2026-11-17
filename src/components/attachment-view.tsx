@@ -1,10 +1,13 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, Platform, Text, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
-import { useAutoHideHeader } from './auto-hide-header';
+import { canShareAttachment, shareAttachment } from './attachment';
+import { useHeaderToggle } from './auto-hide-header';
+import { HeaderItems } from './header-items';
 import { PdfView, canPreviewPdf } from './pdf-view';
-import { EmptyState, ErrorState, HeaderTitle, Loading, Screen } from './ui';
+import { EmptyState, ErrorState, HeaderTitle, Loading } from './ui';
+import { ZoomableImage } from './zoomable-image';
 import { kb } from '@/api';
 import { useFolder } from '@/data/hooks';
 import { fileSize, relativeTime } from '@/lib/format';
@@ -14,7 +17,8 @@ import { useTheme } from '@/theme';
 
 /**
  * An uploaded image or PDF. Images are drawn straight from the server (the request carries the
- * sign-in token); PDFs and SVGs cannot be shown yet, so the screen says so and gives the details.
+ * sign-in token) and can be zoomed (pinch, double tap; a single tap hides the header); PDFs are
+ * shown on iOS; anything else gets a short explanation.
  */
 export function AttachmentView({ path }: { path: string }) {
   const t = useTheme();
@@ -24,9 +28,8 @@ export function AttachmentView({ path }: { path: string }) {
   const isPdf = attachmentKind(name) === 'pdf';
   const preview = Platform.OS !== 'web' && isPreviewableImage(name);
   const [source, setSource] = useState<{ uri: string; headers: Record<string, string> } | null>(null);
-  const [ratio, setRatio] = useState(1);
   const [failed, setFailed] = useState(false);
-  const onScroll = useAutoHideHeader();
+  const toggleHeader = useHeaderToggle();
 
   useEffect(() => {
     if (!preview) return;
@@ -44,6 +47,7 @@ export function AttachmentView({ path }: { path: string }) {
   return (
     <>
       <Stack.Screen options={{ headerTitle: () => <HeaderTitle title={name} subtitle={subtitle} />, headerBlurEffect: 'systemMaterial' }} />
+      {canShareAttachment && <HeaderItems right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => shareAttachment(path) }]} />}
       {folder.loading ? (
         <Loading />
       ) : folder.error ? (
@@ -58,27 +62,12 @@ export function AttachmentView({ path }: { path: string }) {
         />
       ) : failed ? (
         <EmptyState icon="warning" title="Impossibile caricare l’immagine" message="Controlla la connessione e riprova." />
+      ) : source ? (
+        <View style={{ flex: 1, backgroundColor: t.background }}>
+          <ZoomableImage source={source} onTap={toggleHeader} onError={() => setFailed(true)} accessibilityLabel={name} />
+        </View>
       ) : (
-        <Screen contentContainerStyle={{ paddingTop: 14 }} onScroll={onScroll} scrollEventThrottle={16}>
-          {source ? (
-            <Image
-              source={source}
-              resizeMode="contain"
-              onLoad={(e) => {
-                const { width, height } = e.nativeEvent.source;
-                if (width && height) setRatio(width / height);
-              }}
-              onError={() => setFailed(true)}
-              accessibilityLabel={name}
-              style={{ width: '100%', aspectRatio: ratio, borderRadius: 10, backgroundColor: t.fillSubtle }}
-            />
-          ) : (
-            <View style={{ paddingVertical: 60 }}>
-              <Loading />
-            </View>
-          )}
-          {entry && <Text style={{ marginTop: 14, fontSize: 12, color: t.textMuted }}>{`${name} · ${fileSize(entry.size)}`}</Text>}
-        </Screen>
+        <Loading />
       )}
     </>
   );

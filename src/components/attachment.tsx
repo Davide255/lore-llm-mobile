@@ -25,10 +25,16 @@ export function useAttachmentSource(path: string): AttachmentSource | null {
   return loaded?.path === path ? loaded.source : null;
 }
 
-/** Downloads a PDF and hands it to the system (share sheet, which can open it in any PDF app). */
-export async function openPdf(path: string): Promise<void> {
-  if (Platform.OS !== 'ios') {
-    showToast({ icon: 'doc', subject: basename(path), message: "l'apertura dei PDF non è ancora disponibile su questo sistema" });
+/** Attachments can be handed to other apps only on iOS for now (the share sheet takes a file URL there). */
+export const canShareAttachment = Platform.OS === 'ios';
+
+/**
+ * Downloads an attachment (PDF or image) and hands the file to the system share sheet, which can
+ * send it to another app, save it to Files or open it in any PDF reader.
+ */
+export async function shareAttachment(path: string): Promise<void> {
+  if (!canShareAttachment) {
+    showToast({ icon: 'doc', subject: basename(path), message: "la condivisione dei file non è ancora disponibile su questo sistema" });
     return;
   }
   try {
@@ -38,9 +44,12 @@ export async function openPdf(path: string): Promise<void> {
       : (await File.downloadFileAsync(src.uri, new File(Paths.cache, basename(path)), { headers: src.headers, idempotent: true })).uri;
     await Share.share({ url: uri });
   } catch {
-    showToast({ icon: 'doc', subject: basename(path), message: 'impossibile aprire il PDF' });
+    showToast({ icon: 'doc', subject: basename(path), message: 'impossibile condividere il file' });
   }
 }
+
+/** Downloads a PDF and hands it to the system (share sheet, which can open it in any PDF app). */
+export const openPdf = shareAttachment;
 
 /** An image in a document: its natural proportions, at most `width` wide; a tap opens it full screen. */
 export function AttachmentImage({ path, width }: { path: string; width?: number | null }) {
