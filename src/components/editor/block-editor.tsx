@@ -1,5 +1,5 @@
 import { useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type TextStyle } from 'react-native';
 
 import { applyFormat, asParagraph, continuation, toBlocks, type BlockFormat, type EditBlock } from './model';
 import { Icon } from '../icon';
@@ -8,6 +8,8 @@ import { useTextScale } from '@/theme/text-size';
 import { fonts, useTheme, type Theme } from '@/theme';
 
 export interface BlockEditorHandle {
+  /** Scrolls so that the caret of the block being edited is in view (call when the keyboard or layout changes). */
+  reveal(): void;
   /** Wrap the selection in the focused block with inline markers. */
   wrap(prefix: string, suffix: string, placeholder?: string): void;
   format(format: BlockFormat): void;
@@ -27,10 +29,13 @@ export function BlockEditor({
   blocks,
   onChange,
   path,
+  onCaret,
   ref,
 }: {
   blocks: EditBlock[];
   onChange: (blocks: EditBlock[]) => void;
+  /** Reports where the caret line sits (top and bottom, relative to this editor) so the screen can scroll to it. */
+  onCaret?: (top: number, bottom: number) => void;
   /** The file being edited, to resolve the images and links in the blocks that are drawn. */
   path: string;
   ref?: Ref<BlockEditorHandle>;
@@ -42,6 +47,21 @@ export function BlockEditor({
   /** The block whose text field is active: the others are drawn as the reader does, not typed. */
   const [editing, setEditing] = useState<string | null>(null);
   const focusedRef = useRef<string | null>(null);
+  const scale = useTextScale();
+  const layouts = useRef(new Map<string, { y: number; height: number }>());
+
+  /** Estimates the line of the caret from its place in the text: a text field does not report it. */
+  const revealCaret = (id: string | null = focusedRef.current) => {
+    const b = blocks.find((x) => x.id === id);
+    const box = id ? layouts.current.get(id) : undefined;
+    if (!b || !box || !onCaret) return;
+    const text = 'text' in b ? b.text : '';
+    const line = 24 * scale;
+    const at = selections.current.get(b.id)?.start ?? text.length;
+    const ratio = text.length ? Math.min(1, at / text.length) : 1;
+    const top = box.y + Math.max(0, Math.min(box.height - line, ratio * box.height - line / 2));
+    onCaret(top, top + line);
+  };
 
   const focusAt = (id: string, offset?: number, tries = 0) => {
     setEditing(id);
@@ -83,6 +103,9 @@ export function BlockEditor({
     },
     focus(id, offset) {
       focusAt(id ?? blocks[blocks.length - 1].id, offset);
+    },
+    reveal() {
+      revealCaret();
     },
     caret() {
       const id = focusedRef.current;
@@ -139,8 +162,14 @@ export function BlockEditor({
   return (
     <View>
       {blocks.map((b, i) => (
-        <BlockRow
+        <View
           key={b.id}
+          onLayout={(e: LayoutChangeEvent) => {
+            layouts.current.set(b.id, e.nativeEvent.layout);
+            // A block that grows while typing (or turns into a field) may push the caret out of view.
+            if (focusedRef.current === b.id) revealCaret(b.id);
+          }}>
+        <BlockRow
           block={b}
           first={i === 0}
           prev={blocks[i - 1]}
@@ -156,14 +185,19 @@ export function BlockEditor({
           }}
           onChangeText={(text) => onChangeText(b, text)}
           onBackspaceAtStart={() => onBackspaceAtStart(b)}
-          onSelectionChange={(s) => selections.current.set(b.id, s)}
+          onSelectionChange={(s) => {
+            selections.current.set(b.id, s);
+            revealCaret(b.id);
+          }}
           onFocus={() => {
             focusedRef.current = b.id;
             setFocused(b.id);
             setEditing(b.id);
+            revealCaret(b.id);
           }}
           onToggle={() => update(b.id, (x) => (x.type === 'task' ? { ...x, checked: !x.checked } : x))}
         />
+        </View>
       ))}
     </View>
   );
