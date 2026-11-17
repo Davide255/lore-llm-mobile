@@ -7,6 +7,7 @@ import { SectionHeader } from '@/components/ui';
 import { actions, attempt } from '@/data/hooks';
 import { basename, isProjectRoot, projectLabel, validateSlug } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { cleanName, isAttachment } from '@/lib/upload-plan';
 import { fonts, useTheme } from '@/theme';
 
 /** Rename a file, folder or project. Files keep their .md extension. */
@@ -16,13 +17,25 @@ export default function RenameScreen() {
   const isProject = isProjectRoot(path);
   // A team project's key carries its team: only the name before it is edited.
   const current = isProject ? projectLabel(path) : basename(path);
-  const isFile = current.endsWith('.md');
-  const [name, setName] = useState(isFile ? current.slice(0, -3) : current);
+  // An uploaded PDF or image keeps its extension; only the part before it is edited.
+  const attachment = !isProject && isAttachment(current);
+  const ext = attachment ? current.slice(current.lastIndexOf('.')) : current.endsWith('.md') ? '.md' : '';
+  const isFile = !!ext;
+  const [name, setName] = useState(isFile ? current.slice(0, -ext.length) : current);
   const [busy, setBusy] = useState(false);
 
-  // Projects are free-form names; files and folders follow the slug rule.
-  const error = isProject ? (name.trim() && !name.includes('/') && !name.includes('@') ? null : 'Nome non valido.') : validateSlug(name);
-  const next = isFile ? `${name}.md` : name.trim();
+  // Projects and attachments are free-form names; notes and folders follow the slug rule.
+  const free = isProject || attachment;
+  const error = isProject
+    ? name.trim() && !name.includes('/') && !name.includes('@')
+      ? null
+      : 'Nome non valido.'
+    : attachment
+      ? name.trim() && cleanName(name) === name.trim()
+        ? null
+        : 'Nome non valido: niente barre, due punti o caratteri speciali.'
+      : validateSlug(name);
+  const next = isFile ? `${attachment ? name.trim() : name}${ext}` : name.trim();
   const canSave = !error && next !== current && !busy;
 
   const save = async () => {
@@ -45,20 +58,26 @@ export default function RenameScreen() {
         <View style={[styles.field, { backgroundColor: t.cell }]}>
           <TextInput
             value={name}
-            onChangeText={(v) => setName(isProject ? v : v.toLowerCase().replace(/\s+/g, '-'))}
+            onChangeText={(v) => setName(free ? v : v.toLowerCase().replace(/\s+/g, '-'))}
             autoFocus
             selectTextOnFocus
-            autoCapitalize={isProject ? 'sentences' : 'none'}
+            autoCapitalize={free ? 'sentences' : 'none'}
             autoCorrect={false}
             returnKeyType="done"
             onSubmitEditing={() => canSave && save()}
             selectionColor={t.accentText}
-            style={[styles.input, { color: t.text, fontFamily: isProject ? undefined : fonts.mono }]}
+            style={[styles.input, { color: t.text, fontFamily: free ? undefined : fonts.mono }]}
           />
-          {isFile && <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: t.textMuted }}>.md</Text>}
+          {isFile && <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: t.textMuted }}>{ext}</Text>}
         </View>
         <Text style={{ fontSize: 11.5, marginTop: 7, marginHorizontal: 6, color: error && name ? t.error : t.textMuted }}>
-          {error && name ? error : isProject ? 'I link degli agenti verso questo progetto verranno aggiornati.' : 'Minuscole e trattini. Niente spazi.'}
+          {error && name
+            ? error
+            : isProject
+              ? 'I link degli agenti verso questo progetto verranno aggiornati.'
+              : attachment
+                ? `L'estensione ${ext} resta invariata. I link che puntano al file non vengono aggiornati.`
+                : 'Minuscole e trattini. Niente spazi.'}
         </Text>
       </ScrollView>
     </>

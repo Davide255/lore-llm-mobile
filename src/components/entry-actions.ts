@@ -79,8 +79,8 @@ export function entryMenu(entry: Entry, starred = false): MenuItem[] {
   const items: MenuItem[] = [{ label: 'Apri', icon: 'open', onPress: () => router.push(routes.entry(entry.path, entry.kind)) }];
   if (isFile && !attachment && entry.role !== 'index' && !readOnly) items.push({ label: 'Modifica', icon: 'edit', onPress: () => router.push(routes.edit(entry.path)) });
   if (!special && !readOnly) {
-    // The rename screen enforces the slug rule for notes; an uploaded file keeps the name it came with.
-    if (!attachment) items.push({ label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(entry.path)) });
+    // The rename screen enforces the slug rule for notes; an uploaded file keeps its extension and is otherwise free.
+    items.push({ label: 'Rinomina', icon: 'rename', onPress: () => router.push(routes.rename(entry.path)) });
     if (!isProjectRoot(entry.path)) {
       items.push({ label: 'Sposta in…', icon: 'move', onPress: () => router.push(routes.move(entry.path)) });
     }

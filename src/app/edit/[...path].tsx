@@ -89,6 +89,35 @@ function Editor({ initial }: { initial: FileDocument }) {
   const blockRef = useRef<BlockEditorHandle>(null);
   const sourceRef = useRef<SourceEditorHandle>(null);
   const sync = useScrollSync();
+  // The block editor scrolls the page to keep the caret clear of the keyboard and the toolbar.
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollMetrics = useRef({ y: 0, height: 0, keyboard: 0 });
+  const revealCaret = (top: number, bottom: number) => {
+    const m = scrollMetrics.current;
+    const margin = 28;
+    const visible = m.height - m.keyboard - FLOATING_TOOLBAR_HEIGHT;
+    // The editor sits under the 4 px top padding of the scroll content.
+    const from = top + 4;
+    const to = bottom + 4;
+    if (visible <= 0) return;
+    if (to > m.y + visible - margin) scrollRef.current?.scrollTo({ y: to - visible + margin, animated: true });
+    else if (from < m.y + margin) scrollRef.current?.scrollTo({ y: Math.max(0, from - margin), animated: true });
+  };
+  useEffect(() => {
+    // iOS keeps the scroll view full height under the keyboard; Android shrinks it, so nothing to subtract there.
+    const ios = Platform.OS === 'ios';
+    const show = Keyboard.addListener(ios ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
+      scrollMetrics.current.keyboard = ios ? e.endCoordinates.height : 0;
+      setTimeout(() => blockRef.current?.reveal(), 60);
+    });
+    const hide = Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => {
+      scrollMetrics.current.keyboard = 0;
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const history = useRef<string[]>([]);
   const lastPush = useRef(0);
   const leaving = useRef(false);
@@ -280,13 +309,25 @@ function Editor({ initial }: { initial: FileDocument }) {
         <View style={{ flex: 1, flexDirection: 'row' }}>
         <ScrollView
           {...(sideBySide ? sync.source : null)}
+          ref={sideBySide ? sync.source.ref : scrollRef}
+          {...(sideBySide
+            ? null
+            : {
+                scrollEventThrottle: 16,
+                onLayout: (e: { nativeEvent: { layout: { height: number } } }) => {
+                  scrollMetrics.current.height = e.nativeEvent.layout.height;
+                },
+                onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                  scrollMetrics.current.y = e.nativeEvent.contentOffset.y;
+                },
+              })}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: FLOATING_TOOLBAR_HEIGHT + 40 }}>
           {mode === 'preview' ? (
-            <BlockEditor ref={blockRef} blocks={blocks} onChange={changeBlocks} path={doc.path} />
+            <BlockEditor ref={blockRef} blocks={blocks} onChange={changeBlocks} onCaret={revealCaret} path={doc.path} />
           ) : (
             <SourceEditor ref={sourceRef} value={source} onChange={changeSource} />
           )}
