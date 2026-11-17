@@ -210,12 +210,12 @@ function AnchorScroll({
  * One block of a note drawn as the reader does (formulas, images, PDFs), for the editor's live preview:
  * the blocks that are not being edited show like this and turn into text fields when tapped.
  */
-export function RenderedBlock({ block, path }: { block: Block; path: string }) {
+export function RenderedBlock({ block, prev, path }: { block: Block; prev?: Block; path: string }) {
   const t = useTheme();
   const files = useProjectFiles(projectOf(path)).data ?? null;
   return (
     <ProjectFiles.Provider value={files}>
-      <BlockContent block={block} path={path} t={t} />
+      <BlockContent block={block} prev={prev} path={path} t={t} />
     </ProjectFiles.Provider>
   );
 }

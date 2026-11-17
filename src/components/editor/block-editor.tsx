@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, TextInput, View, type TextStyle } from 're
 import { applyFormat, asParagraph, continuation, toBlocks, type BlockFormat, type EditBlock } from './model';
 import { Icon } from '../icon';
 import { RenderedBlock } from '../markdown';
-import { hasRichInline } from '@/lib/markdown';
 import { useTextScale } from '@/theme/text-size';
 import { fonts, useTheme, type Theme } from '@/theme';
 
@@ -40,7 +39,7 @@ export function BlockEditor({
   const inputs = useRef(new Map<string, TextInput>());
   const selections = useRef(new Map<string, Selection>());
   const [focused, setFocused] = useState<string | null>(null);
-  /** The block whose text field is active: the others with formulas or images are drawn, not typed. */
+  /** The block whose text field is active: the others are drawn as the reader does, not typed. */
   const [editing, setEditing] = useState<string | null>(null);
   const focusedRef = useRef<string | null>(null);
 
@@ -144,6 +143,7 @@ export function BlockEditor({
           key={b.id}
           block={b}
           first={i === 0}
+          prev={blocks[i - 1]}
           focused={focused === b.id}
           drawn={editing !== b.id && isDrawn(b)}
           path={path}
@@ -169,13 +169,16 @@ export function BlockEditor({
   );
 }
 
-/** Whether a block has a formula or an image in it, so that it is drawn while it is not being edited. */
-const isDrawn = (b: EditBlock) =>
-  b.type === 'code' ? b.lang === 'math' && !!b.text.trim() : b.type !== 'rule' && b.type !== 'table' && hasRichInline(b.text);
+/**
+ * The preview draws every block as the reader does (bold, links, formulas, images, tables…) and turns
+ * only the one being edited into a text field. An empty block stays a field so there is somewhere to type.
+ */
+const isDrawn = (b: EditBlock) => b.type !== 'rule' && !('text' in b && !b.text.trim());
 
 function BlockRow({
   block: b,
   first,
+  prev,
   focused,
   drawn,
   path,
@@ -191,6 +194,8 @@ function BlockRow({
 }: {
   block: EditBlock;
   first: boolean;
+  /** The block above, so that a drawn one is spaced as it is in the reader. */
+  prev?: EditBlock;
   focused: boolean;
   /** Show the block as the reader does instead of a text field (until it is tapped). */
   drawn: boolean;
@@ -214,7 +219,7 @@ function BlockRow({
     const indent = 'indent' in b ? b.indent * 20 : 0;
     return (
       <Pressable onPress={onEdit} accessibilityHint="Tocca per modificare" style={[styles.drawn, { marginLeft: indent }]}>
-        <RenderedBlock block={b} path={path} />
+        <RenderedBlock block={b} prev={prev} path={path} />
       </Pressable>
     );
   }
