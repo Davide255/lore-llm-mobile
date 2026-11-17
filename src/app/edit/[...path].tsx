@@ -90,7 +90,7 @@ function Editor({ initial }: { initial: FileDocument }) {
   const sourceRef = useRef<SourceEditorHandle>(null);
   const sync = useScrollSync();
   // The block editor scrolls the page to keep the caret clear of the keyboard and the toolbar.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const scrollMetrics = useRef({ y: 0, height: 0, keyboard: 0 });
   const revealCaret = (top: number, bottom: number) => {
     const m = scrollMetrics.current;
