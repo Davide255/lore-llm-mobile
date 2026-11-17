@@ -5,6 +5,7 @@ import { applyFormat, asParagraph, continuation, toBlocks, type BlockFormat, typ
 import { Icon } from '../icon';
 import { RenderedBlock } from '../markdown';
 import { hasRichInline } from '@/lib/markdown';
+import { useTextScale } from '@/theme/text-size';
 import { fonts, useTheme, type Theme } from '@/theme';
 
 export interface BlockEditorHandle {
@@ -204,6 +205,7 @@ function BlockRow({
   onFocus: () => void;
   onToggle: () => void;
 }) {
+  const scale = useTextScale();
   if (b.type === 'rule') {
     return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: t.hairline, marginVertical: 18 }} />;
   }
@@ -221,21 +223,21 @@ function BlockRow({
     switch (b.type) {
       case 'heading':
         return b.level === 1
-          ? { fontSize: 21, lineHeight: 26, fontWeight: '700', letterSpacing: -0.6, color: t.text }
+          ? { fontSize: 21 * scale, lineHeight: 26 * scale, fontWeight: '700', letterSpacing: -0.6, color: t.text }
           : b.level === 2
-            ? { fontSize: 16, lineHeight: 21, fontWeight: '600', color: t.text }
-            : { fontSize: 14.5, lineHeight: 20, fontWeight: '600', color: t.text };
+            ? { fontSize: 16 * scale, lineHeight: 21 * scale, fontWeight: '600', color: t.text }
+            : { fontSize: 14.5 * scale, lineHeight: 20 * scale, fontWeight: '600', color: t.text };
       case 'code':
       case 'table':
-        return { fontFamily: fonts.mono, fontSize: 12, lineHeight: 19, color: t.textSecondary };
+        return { fontFamily: fonts.mono, fontSize: 12 * scale, lineHeight: 19 * scale, color: t.textSecondary };
       case 'quote':
-        return { fontSize: 13.5, lineHeight: 21, color: t.textSecondary };
+        return { fontSize: 13.5 * scale, lineHeight: 21 * scale, color: t.textSecondary };
       case 'task':
         return b.checked
-          ? { fontSize: 14.5, lineHeight: 21, color: t.textMuted, textDecorationLine: 'line-through' }
-          : { fontSize: 14.5, lineHeight: 21, color: t.text };
+          ? { fontSize: 14.5 * scale, lineHeight: 21 * scale, color: t.textMuted, textDecorationLine: 'line-through' }
+          : { fontSize: 14.5 * scale, lineHeight: 21 * scale, color: t.text };
       default:
-        return { fontSize: 14.5, lineHeight: 21.5, color: t.textBody };
+        return { fontSize: 14.5 * scale, lineHeight: 21.5 * scale, color: t.textBody };
     }
   })();
 
@@ -280,8 +282,8 @@ function BlockRow({
         b.type === 'quote' && { borderLeftWidth: 3, borderLeftColor: t.accent, backgroundColor: focused ? t.accentSoft : t.cell, paddingLeft: 12 },
         (b.type === 'code' || b.type === 'table') && { backgroundColor: focused ? t.accentSoft : t.cell, paddingHorizontal: 12, paddingVertical: 8 },
       ]}>
-      {b.type === 'bullet' && <Text style={[styles.marker, { color: t.accentText }]}>•</Text>}
-      {b.type === 'ordered' && <Text style={[styles.marker, { color: t.accentText, minWidth: 18 }]}>{b.n}.</Text>}
+      {b.type === 'bullet' && <Text style={[styles.marker, { color: t.accentText, fontSize: 14.5 * scale, lineHeight: 21.5 * scale }]}>•</Text>}
+      {b.type === 'ordered' && <Text style={[styles.marker, { color: t.accentText, minWidth: 18, fontSize: 14.5 * scale, lineHeight: 21.5 * scale }]}>{b.n}.</Text>}
       {b.type === 'task' && (
         <Pressable onPress={onToggle} hitSlop={8} style={{ paddingTop: 5 }}>
           <Icon name={b.checked ? 'checkCircle' : 'circle'} size={19} color={b.checked ? t.accentText : t.textMuted} />
