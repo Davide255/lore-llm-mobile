@@ -11,7 +11,7 @@ import { Cell, IconWell } from './ui';
 import type { Entry } from '@/api';
 import { fileSize, plural, relativeTime } from '@/lib/format';
 import { routes } from '@/lib/routes';
-import { attachmentKind, isAttachment } from '@/lib/upload-plan';
+import { attachmentKind } from '@/lib/upload-plan';
 import { canWrite } from '@/lib/teams';
 import { useStars } from '@/data/hooks';
 import { useTheme } from '@/theme';
@@ -117,17 +117,15 @@ export function EntryRow({
       containerStyle={{ backgroundColor: t.cell }}
       renderRightActions={() => (
         <View style={{ flexDirection: 'row' }}>
-          {!(isFile && isAttachment(entry.name)) && (
-            <SwipeAction
-              icon="rename"
-              label="Rinomina"
-              color={t.swipeNeutral}
-              onPress={() => {
-                swipe.current?.close();
-                router.push(routes.rename(entry.path));
-              }}
-            />
-          )}
+          <SwipeAction
+            icon="rename"
+            label="Rinomina"
+            color={t.swipeNeutral}
+            onPress={() => {
+              swipe.current?.close();
+              router.push(routes.rename(entry.path));
+            }}
+          />
           <SwipeAction
             icon="delete"
             label="Elimina"
