@@ -2,12 +2,10 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { API_URL } from '@/api/cloud/cloud-client';
 import { signIn, type AuthProvider } from '@/auth/session';
 import { Icon } from '@/components/icon';
 import { fonts, useTheme } from '@/theme';
 
-const host = API_URL.replace(/^https?:\/\//, '');
 
 /** The first thing on screen: nothing else is reachable until the user signs in. */
 export default function SignInScreen() {
@@ -65,7 +63,6 @@ export default function SignInScreen() {
           {busy === 'Google' ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonLabel}>Accedi con Google</Text>}
         </Pressable>
       </View>
-      <Text style={[styles.server, { color: t.textMuted }]}>Server: {host}</Text>
     </View>
   );
 }
@@ -81,5 +78,4 @@ const styles = StyleSheet.create({
   button: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderCurve: 'continuous' },
   buttonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   buttonLabel: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  server: { fontSize: 12, textAlign: 'center', marginTop: 12 },
 });
