@@ -67,3 +67,14 @@ export function applyFormat(b: EditBlock, format: BlockFormat): EditBlock {
       return b.type === 'quote' ? { ...base, type: 'paragraph', text } : { ...base, type: 'quote', text };
   }
 }
+
+/**
+ * A paragraph whose text reads as other markdown ("# Titolo", "- voce", "1. passo", "> nota", "---")
+ * as the blocks the reader shows for it; the first keeps the paragraph's id. Null when it stays as it is.
+ */
+export function settleBlock(b: EditBlock): EditBlock[] | null {
+  if (b.type !== 'paragraph' || !b.text.trim()) return null;
+  const parsed = parse(b.text);
+  if (!parsed.length || (parsed.length === 1 && parsed[0].type === 'paragraph')) return null;
+  return parsed.map((p, i) => (i === 0 ? { ...p, id: b.id, line: b.line } : withId(p)));
+}

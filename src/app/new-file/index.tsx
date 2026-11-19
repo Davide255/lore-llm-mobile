@@ -4,13 +4,13 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { NewFileTemplate } from '@/api';
-import { showActionSheet } from '@/components/action-sheet';
+import { folderLabel, pickedFolder } from '@/components/folder-picker';
 import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { Banner, Cell, IconWell, Section, SectionHeader } from '@/components/ui';
-import { actions, attempt, useFolderTree } from '@/data/hooks';
+import { actions, attempt } from '@/data/hooks';
 import { firstHeading } from '@/lib/markdown';
-import { isProjectRoot, projectOf, slugify, validateSlug } from '@/lib/paths';
+import { isProjectRoot, nameFromTitle, projectOf, validateName } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { fonts, useTheme } from '@/theme';
 
@@ -20,13 +20,14 @@ const templates: { key: NewFileTemplate; title: string; subtitle?: string }[] = 
   { key: 'checklist', title: 'Checklist', subtitle: 'Elenco di caselle' },
 ];
 
-function titleFromSlug(slug: string) {
-  const s = slug.replace(/-/g, ' ').trim();
+/** The template's H1: the name as typed (a slug-style name reads as words). */
+function titleFromName(name: string) {
+  const s = (/\s/.test(name) ? name : name.replace(/-/g, ' ')).trim();
   return s ? s[0].toUpperCase() + s.slice(1) : 'Senza titolo';
 }
 
-function templateContent(template: NewFileTemplate, slug: string) {
-  const title = titleFromSlug(slug);
+function templateContent(template: NewFileTemplate, name: string) {
+  const title = titleFromName(name);
   if (template === 'sections') return `# ${title}\n\n## Contesto\n\n\n## Decisioni\n\n`;
   if (template === 'checklist') return `# ${title}\n\n- [ ] \n`;
   return '';
@@ -38,29 +39,35 @@ export default function NewFileScreen() {
   const params = useLocalSearchParams<{ parent: string; kind?: 'file' | 'folder' | 'paste' }>();
   const kind = params.kind ?? 'file';
   const isFolder = kind === 'folder';
-  const [parent, setParent] = useState(params.parent);
+  // The folder picked in «Posizione» (pushed inside this modal), else where the + menu was opened.
+  const picked = pickedFolder.useValue();
+  const parent = picked && projectOf(picked) === projectOf(params.parent) ? picked : params.parent;
   const [name, setName] = useState('');
   const [template, setTemplate] = useState<NewFileTemplate>('empty');
   const [pasted, setPasted] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const tree = useFolderTree(projectOf(params.parent));
+
+  // A pick belongs to this modal only: forget it when the modal closes.
+  useEffect(() => () => pickedFolder.set(null), []);
 
   useEffect(() => {
     if (kind !== 'paste') return;
     Clipboard.getStringAsync().then((text) => {
       setPasted(text);
       const h1 = firstHeading(text);
-      if (h1) setName(slugify(h1));
+      if (h1) setName(nameFromTitle(h1));
     });
   }, [kind]);
 
-  const error = name ? validateSlug(name) : null;
-  const canCreate = !!name && !error && !busy && (kind !== 'paste' || !!pasted);
+  // Dots and spaces are allowed; a typed ".md" is not doubled by the one added on save.
+  const clean = isFolder ? name.trim() : name.trim().replace(/\.md$/i, '').trim();
+  const error = name ? (validateName(clean) ?? (isFolder && /\.md$/i.test(clean) ? 'Una cartella non può finire con .md' : null)) : null;
+  const canCreate = !!clean && !error && !busy && (kind !== 'paste' || !!pasted);
 
   const create = async () => {
     setBusy(true);
     if (isFolder) {
-      const path = await attempt(() => actions.createFolder(parent, name), 'Impossibile creare la cartella');
+      const path = await attempt(() => actions.createFolder(parent, clean), 'Impossibile creare la cartella');
       setBusy(false);
       if (path) {
         router.back();
@@ -68,17 +75,13 @@ export default function NewFileScreen() {
       }
       return;
     }
-    const content = kind === 'paste' ? (pasted ?? '') : templateContent(template, name);
-    const doc = await attempt(() => actions.createFile({ parent, name: `${name}.md`, content }), 'Impossibile creare il file');
+    const content = kind === 'paste' ? (pasted ?? '') : templateContent(template, clean);
+    const doc = await attempt(() => actions.createFile({ parent, name: `${clean}.md`, content }), 'Impossibile creare il file');
     setBusy(false);
     if (doc) router.replace(kind === 'paste' ? routes.file(doc.path) : routes.edit(doc.path));
   };
 
-  const pickLocation = () =>
-    showActionSheet({
-      title: 'Posizione',
-      options: (tree.data ?? [parent]).map((f) => ({ label: `${f}/`, onPress: () => setParent(f) })),
-    });
+  const pickLocation = () => router.push(routes.newFileFolder(projectOf(parent), parent));
 
   return (
     <>
@@ -96,8 +99,8 @@ export default function NewFileScreen() {
         <View style={[styles.field, { backgroundColor: t.cell }]}>
           <TextInput
             value={name}
-            onChangeText={(v) => setName(v.toLowerCase().replace(/\s+/g, '-'))}
-            placeholder={isFolder ? 'decisioni' : 'metriche-attivazione'}
+            onChangeText={setName}
+            placeholder={isFolder ? 'Decisioni' : '8. Equilibrio chimico'}
             placeholderTextColor={t.textMuted}
             autoFocus={kind !== 'paste'}
             autoCapitalize="none"
@@ -109,15 +112,15 @@ export default function NewFileScreen() {
           />
           {!isFolder && <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: t.textMuted }}>.md</Text>}
         </View>
-        <Text style={[styles.hint, { color: error ? t.error : t.textMuted }]}>{error ?? 'Minuscole e trattini. Niente spazi.'}</Text>
+        <Text style={[styles.hint, { color: error ? t.error : t.textMuted }]}>{error ?? 'Spazi e punti ammessi. Niente barre né : * ? " < > |'}</Text>
 
         <Section header="Posizione">
           <Cell
             icon={<IconWell name="folderFill" color={t.folder} filled />}
-            title={`${parent}/`}
+            title={folderLabel(parent)}
             mono
             subtitle={isProjectRoot(parent) ? 'Radice del progetto' : 'Cartella'}
-            right={<Icon name="chevronUpDown" size={14} color={t.textMuted} />}
+            chevron
             onPress={pickLocation}
           />
         </Section>

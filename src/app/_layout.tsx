@@ -96,7 +96,7 @@ export default function RootLayout() {
                   <Stack.Screen name="agent/[id]" options={{ title: '' }} />
                   <Stack.Screen name="team/[id]" options={{ title: '' }} />
                   <Stack.Screen name="edit/[...path]" options={{ presentation: split ? 'fullScreenModal' : 'modal', title: '' }} />
-                  <Stack.Screen name="new-file" options={{ presentation: 'modal', title: 'Nuovo file' }} />
+                  <Stack.Screen name="new-file" options={{ presentation: 'modal', headerShown: false }} />
                   <Stack.Screen name="new-project" options={{ presentation: 'modal', title: 'Nuovo progetto' }} />
                   <Stack.Screen name="rename" options={{ presentation: 'modal', title: 'Rinomina' }} />
                   <Stack.Screen name="move" options={{ presentation: 'modal', title: 'Sposta in…' }} />

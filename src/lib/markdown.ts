@@ -25,7 +25,8 @@ export type MathDelim = '$$' | '\\[';
 
 export type BlockType = Block['type'];
 
-const HEADING = /^(#{1,6})\s+(.*)$/;
+// Up to three spaces may come before the #, as in CommonMark.
+const HEADING = /^ {0,3}(#{1,6})\s+(.*)$/;
 const TASK = /^(\s*)[-*+]\s+\[( |x|X)\]\s?(.*)$/;
 const BULLET = /^(\s*)[-*+]\s+(.*)$/;
 const ORDERED = /^(\s*)(\d+)[.)]\s+(.*)$/;
@@ -290,7 +291,8 @@ const INLINE = new RegExp(
     // dollar, and no digit right after it, so "$5 and $10" stays text.
     /(\$[^\s$](?:[^$\n]*?[^\s$\\])?\$(?!\d))/,
     /(\\\(.+?\\\))/, // 5 \(math\)
-    /(\*\*[^*]+?\*\*|__[^_]+?__)/, // 6 bold
+    // 6 bold: ***both***, then **text** that may hold *italic* pairs ("**Nota *bene***"), then __text__.
+    /(\*\*\*[^*\n]+?\*\*\*|\*\*(?:[^*]|\*[^*\n]+?\*)+?\*\*|__[^_]+?__)/,
     /(~~[^~]+?~~)/, // 7 strike
     /(\*[^*\s][^*]*?\*|_[^_\s][^_]*?_)/, // 8 italic
     /(!\[\[[^[\]\n|]*(?:\|[^[\]\n]*)?\]\])/, // 9 ![[embed]]

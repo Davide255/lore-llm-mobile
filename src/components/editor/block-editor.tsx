@@ -1,7 +1,7 @@
-import { useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type Ref } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent, type TextStyle } from 'react-native';
 
-import { applyFormat, asParagraph, continuation, toBlocks, type BlockFormat, type EditBlock } from './model';
+import { applyFormat, asParagraph, continuation, settleBlock, toBlocks, type BlockFormat, type EditBlock } from './model';
 import { Icon } from '../icon';
 import { RenderedBlock } from '../markdown';
 import { useTextScale } from '@/theme/text-size';
@@ -19,6 +19,7 @@ export interface BlockEditorHandle {
 }
 
 type Selection = { start: number; end: number };
+type Input = ComponentRef<typeof TextInput>;
 
 /**
  * Live-preview editor (B1): each markdown block is its own TextInput styled
@@ -41,9 +42,13 @@ export function BlockEditor({
   ref?: Ref<BlockEditorHandle>;
 }) {
   const t = useTheme();
-  const inputs = useRef(new Map<string, TextInput>());
+  const inputs = useRef(new Map<string, Input>());
+  /** Holds the keyboard while focus moves from one block's field to another (see `focusAt`). */
+  const keeper = useRef<Input>(null);
   const selections = useRef(new Map<string, Selection>());
   const [focused, setFocused] = useState<string | null>(null);
+  /** Where the hidden keyboard keeper sits: on the focused block, so a scroll to the focused field stays put. */
+  const [keeperTop, setKeeperTop] = useState(0);
   /** The block whose text field is active: the others are drawn as the reader does, not typed. */
   const [editing, setEditing] = useState<string | null>(null);
   const focusedRef = useRef<string | null>(null);
@@ -64,6 +69,13 @@ export function BlockEditor({
   };
 
   const focusAt = (id: string, offset?: number, tries = 0) => {
+    // Enter, Backspace and taps swap fields: the block left behind is drawn again (its field unmounts) and
+    // the next one mounts a frame later. iOS closes the keyboard when the focused field goes away, then
+    // reopens it: the flicker. A hidden field takes the focus in between, so the keyboard never leaves.
+    if (tries === 0 && id !== focusedRef.current) {
+      const current = focusedRef.current ? inputs.current.get(focusedRef.current) : undefined;
+      if (current?.isFocused()) keeper.current?.focus();
+    }
     setEditing(id);
     requestAnimationFrame(() => {
       const input = inputs.current.get(id);
@@ -75,13 +87,27 @@ export function BlockEditor({
       input.focus();
       if (offset !== undefined) {
         selections.current.set(id, { start: offset, end: offset });
-        input.setSelection(offset, offset);
+        input.setSelection?.(offset, offset); // not on web
       }
     });
   };
 
   const update = (id: string, patch: (b: EditBlock) => EditBlock) =>
     onChange(blocks.map((b) => (b.id === id ? patch(b) : b)));
+
+  // A paragraph typed as markdown ("# Titolo", "- voce", "> nota") becomes that block once the caret leaves
+  // it, so the preview draws it as the reader would (and the next tap edits it without its markers).
+  const left = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = left.current;
+    left.current = editing;
+    if (!prev || prev === editing) return;
+    const i = blocks.findIndex((b) => b.id === prev);
+    const settled = i < 0 ? null : settleBlock(blocks[i]);
+    if (settled) onChange([...blocks.slice(0, i), ...settled, ...blocks.slice(i + 1)]);
+    // Only a change of the block being edited settles the one left; `blocks` is read as it is then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
   useImperativeHandle(ref, () => ({
     wrap(prefix, suffix, placeholder = '') {
@@ -161,6 +187,18 @@ export function BlockEditor({
 
   return (
     <View>
+      <TextInput
+        ref={keeper}
+        value=""
+        multiline
+        caretHidden
+        autoCorrect
+        autoCapitalize="sentences"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        pointerEvents="none"
+        style={[styles.keeper, { top: keeperTop }]}
+      />
       {blocks.map((b, i) => (
         <View
           key={b.id}
@@ -192,6 +230,7 @@ export function BlockEditor({
           onFocus={() => {
             focusedRef.current = b.id;
             setFocused(b.id);
+            setKeeperTop(layouts.current.get(b.id)?.y ?? 0);
             setEditing(b.id);
             revealCaret(b.id);
           }}
@@ -237,7 +276,7 @@ function BlockRow({
   onEdit: () => void;
   onBlur: () => void;
   t: Theme;
-  inputRef: (r: TextInput | null) => void;
+  inputRef: (r: Input | null) => void;
   onChangeText: (text: string) => void;
   onBackspaceAtStart: () => void;
   onSelectionChange: (s: Selection) => void;
@@ -338,4 +377,5 @@ const styles = StyleSheet.create({
   marker: { fontSize: 14.5, lineHeight: 21.5, paddingTop: 5 },
   drawn: { paddingHorizontal: 5, marginHorizontal: -5, paddingVertical: 2 },
   input: { paddingVertical: 4, paddingHorizontal: 0, margin: 0, textAlignVertical: 'top' },
+  keeper: { position: 'absolute', left: 0, width: 1, height: 1, opacity: 0 },
 });

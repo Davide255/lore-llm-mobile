@@ -78,13 +78,31 @@ export function resolveWikiTarget(fromFile: string, target: string, files: strin
   return matches[0] ?? null;
 }
 
-const FILE_NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
+/** Characters the server refuses in a name (as in upload-plan's cleanName): folders, `:*?"<>|`, control characters. */
+const BAD_NAME_CHAR = /[\\/:*?"<>|\u0000-\u001f]/;
 
-/** File/folder names: lowercase and dashes, no spaces (per design C2). */
-export function validateSlug(name: string): string | null {
-  if (!name) return 'Inserisci un nome.';
-  if (!FILE_NAME_RE.test(name)) return 'Solo minuscole, numeri e trattini.';
+/**
+ * Note and folder names: free text, so dots and spaces are fine ("8.equilibrio chimico").
+ * Refused: empty, a leading dot (hidden file, also "." and ".."), and what the server refuses.
+ * Callers trim the name before saving.
+ */
+export function validateName(name: string): string | null {
+  const n = name.trim();
+  if (!n) return 'Inserisci un nome.';
+  if (BAD_NAME_CHAR.test(n)) return 'Niente barre né i caratteri : * ? " < > |';
+  if (n.startsWith('.')) return 'Il nome non può iniziare con un punto.';
   return null;
+}
+
+/** A pasted heading as a default note name: the heading itself, minus what a name cannot hold. */
+export function nameFromTitle(title: string): string {
+  return title
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+    .slice(0, 80)
+    .trim();
 }
 
 export function slugify(input: string): string {
