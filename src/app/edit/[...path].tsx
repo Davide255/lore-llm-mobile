@@ -277,6 +277,16 @@ function Editor({ initial }: { initial: FileDocument }) {
   // Android: edge-to-edge means content must make room for the IME itself.
   const keyboard = useAnimatedKeyboard();
   const keyboardPad = useAnimatedStyle(() => ({ paddingBottom: Platform.OS === 'android' ? keyboard.height.value : 0 }));
+  // Phone source mode: the text field ends where the floating toolbar starts (it rides on the keyboard,
+  // or on the home indicator), so the caret line the system scrolls to is never hidden behind it.
+  const bottomInset = insets.bottom;
+  const aboveToolbar = useAnimatedStyle(() => {
+    const kb = keyboard.height.value;
+    const toolbarTop = Math.max(kb, bottomInset) + FLOATING_TOOLBAR_HEIGHT + 6;
+    // On Android the screen already ends at the keyboard (keyboardPad).
+    return { paddingBottom: toolbarTop - (Platform.OS === 'android' ? kb : 0) };
+  });
+  const fillSource = mode === 'source' && !sideBySide;
 
   return (
     <>
@@ -307,6 +317,17 @@ function Editor({ initial }: { initial: FileDocument }) {
         </View>
         )}
         <View style={{ flex: 1, flexDirection: 'row' }}>
+        {fillSource ? (
+          <Animated.View style={[{ flex: 1 }, aboveToolbar]}>
+            <SourceEditor
+              ref={sourceRef}
+              value={source}
+              onChange={changeSource}
+              fill
+              style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 }}
+            />
+          </Animated.View>
+        ) : (
         <ScrollView
           {...(sideBySide ? sync.source : null)}
           ref={sideBySide ? sync.source.ref : scrollRef}
@@ -337,6 +358,7 @@ function Editor({ initial }: { initial: FileDocument }) {
             onPress={() => (mode === 'preview' ? blockRef.current?.focus() : sourceRef.current?.focus(source.length))}
           />
         </ScrollView>
+        )}
         {sideBySide ? (
           <ScrollView
             {...sync.preview}

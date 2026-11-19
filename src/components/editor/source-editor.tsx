@@ -1,5 +1,5 @@
-import { useImperativeHandle, useMemo, useRef, type Ref } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { useImperativeHandle, useMemo, useRef, type ComponentRef, type Ref } from 'react';
+import { Platform, StyleSheet, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
 
 import { fonts, useTheme, type Theme } from '@/theme';
 
@@ -56,25 +56,33 @@ function highlight(src: string, t: Theme) {
  * Raw markdown editor (B2). The TextInput is uncontrolled-by-value: its
  * content is given as highlighted children so markers are coloured while
  * typing.
+ *
+ * `fill`: the field fills its parent and scrolls itself (phones). The parent ends above the keyboard and
+ * the toolbar, so the system keeps the caret's line in view right where the text is visible, without the
+ * field growing inside an outer ScrollView. Otherwise it grows with the text (tablet, synced with the preview).
  */
 export function SourceEditor({
   value,
   onChange,
+  fill,
+  style,
   ref,
 }: {
   value: string;
   onChange: (value: string) => void;
+  fill?: boolean;
+  style?: StyleProp<TextStyle>;
   ref?: Ref<SourceEditorHandle>;
 }) {
   const t = useTheme();
-  const input = useRef<TextInput>(null);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
   const sel = useRef({ start: 0, end: 0 });
 
   const setCaret = (start: number, end = start) => {
     sel.current = { start, end };
     requestAnimationFrame(() => {
       input.current?.focus();
-      input.current?.setSelection(start, end);
+      input.current?.setSelection?.(start, end); // not on web
     });
   };
 
@@ -106,7 +114,7 @@ export function SourceEditor({
     <TextInput
       ref={input}
       multiline
-      scrollEnabled={false}
+      scrollEnabled={!!fill}
       onChangeText={onChange}
       onSelectionChange={(e) => (sel.current = e.nativeEvent.selection)}
       autoCorrect={false}
@@ -116,9 +124,10 @@ export function SourceEditor({
       cursorColor={t.accentText}
       placeholder="# Titolo"
       placeholderTextColor={t.textMuted}
-      style={[styles.input, { color: t.textSecondary }]}>
-      {children}
-    </TextInput>
+      style={[styles.input, fill ? styles.fill : styles.grow, { color: t.textSecondary }, style]}
+      // A web <textarea> takes plain text only: no colours there.
+      {...(Platform.OS === 'web' ? { value } : { children })}
+    />
   );
 }
 
@@ -128,7 +137,8 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 23.75,
     padding: 0,
-    minHeight: 300,
     textAlignVertical: 'top',
   },
+  grow: { minHeight: 300 },
+  fill: { flex: 1 },
 });

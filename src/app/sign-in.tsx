@@ -34,11 +34,9 @@ export default function SignInScreen() {
       <View style={styles.hero}>
         <Image source={require('../../assets/images/lore-1c-glyph-combined.png')} style={styles.logo} resizeMode="contain" />
         <Text style={[styles.title, { color: t.text }]}>Lore LLM</Text>
-        <Text style={[styles.body, { color: t.textSecondary }]}>
-          La knowledge base che condividi con i tuoi agenti. Ogni progetto ha il suo{' '}
-          <Text style={{ fontFamily: fonts.mono }}>index.md</Text> generato e la sua{' '}
-          <Text style={{ fontFamily: fonts.mono }}>checklist.md</Text>. Accedi per aprirla.
-        </Text>
+        {/* The motto of the app: notes outlive what is said, and agents read what is written. */}
+        <Text style={[styles.motto, { color: t.textSecondary }]}>Verba volant, scripta manent.</Text>
+        <Text style={[styles.body, { color: t.textMuted }]}>Le tue note, la memoria dei tuoi agenti.</Text>
       </View>
 
       <View style={styles.buttons}>
@@ -77,7 +75,8 @@ const styles = StyleSheet.create({
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   logo: { width: 96, height: 96, marginBottom: 6 },
   title: { fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
-  body: { fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 340 },
+  motto: { fontSize: 19, lineHeight: 26, fontStyle: 'italic', fontFamily: fonts.serif, textAlign: 'center', maxWidth: 340, marginTop: 2 },
+  body: { fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 340, marginTop: -6 },
   buttons: { gap: 12 },
   button: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderCurve: 'continuous' },
   buttonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

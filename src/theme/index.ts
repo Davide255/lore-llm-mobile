@@ -107,6 +107,8 @@ export function useTheme(): Theme {
 
 export const fonts = {
   mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, Menlo, monospace' }),
+  /** System serif, for the odd quotation (the sign-in motto). */
+  serif: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia, serif' }),
 };
 
 export const radius = { sm: 8, md: 12, lg: 16, xl: 20, pill: 9999 } as const;

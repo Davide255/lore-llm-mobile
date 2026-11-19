@@ -5,7 +5,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { HeaderItems } from '@/components/header-items';
 import { SectionHeader } from '@/components/ui';
 import { actions, attempt } from '@/data/hooks';
-import { basename, isProjectRoot, projectLabel, validateSlug } from '@/lib/paths';
+import { basename, isProjectRoot, projectLabel, validateName } from '@/lib/paths';
 import { routes } from '@/lib/routes';
 import { cleanName, isAttachment } from '@/lib/upload-plan';
 import { fonts, useTheme } from '@/theme';
@@ -24,8 +24,6 @@ export default function RenameScreen() {
   const [name, setName] = useState(isFile ? current.slice(0, -ext.length) : current);
   const [busy, setBusy] = useState(false);
 
-  // Projects and attachments are free-form names; notes and folders follow the slug rule.
-  const free = isProject || attachment;
   const error = isProject
     ? name.trim() && !name.includes('/') && !name.includes('@')
       ? null
@@ -34,8 +32,9 @@ export default function RenameScreen() {
       ? name.trim() && cleanName(name) === name.trim()
         ? null
         : 'Nome non valido: niente barre, due punti o caratteri speciali.'
-      : validateSlug(name);
-  const next = isFile ? `${attachment ? name.trim() : name}${ext}` : name.trim();
+      : (validateName(name) ?? (!isFile && /\.md$/i.test(name.trim()) ? 'Una cartella non può finire con .md' : null));
+  // Every name is free text (dots and spaces too), saved trimmed; a typed ".md" is not doubled.
+  const next = `${ext === '.md' ? name.trim().replace(/\.md$/i, '').trim() : name.trim()}${ext}`;
   const canSave = !error && next !== current && !busy;
 
   const save = async () => {
@@ -58,15 +57,15 @@ export default function RenameScreen() {
         <View style={[styles.field, { backgroundColor: t.cell }]}>
           <TextInput
             value={name}
-            onChangeText={(v) => setName(free ? v : v.toLowerCase().replace(/\s+/g, '-'))}
+            onChangeText={setName}
             autoFocus
             selectTextOnFocus
-            autoCapitalize={free ? 'sentences' : 'none'}
+            autoCapitalize={isProject ? 'sentences' : 'none'}
             autoCorrect={false}
             returnKeyType="done"
             onSubmitEditing={() => canSave && save()}
             selectionColor={t.accentText}
-            style={[styles.input, { color: t.text, fontFamily: free ? undefined : fonts.mono }]}
+            style={[styles.input, { color: t.text, fontFamily: isProject ? undefined : fonts.mono }]}
           />
           {isFile && <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: t.textMuted }}>{ext}</Text>}
         </View>
@@ -77,7 +76,7 @@ export default function RenameScreen() {
               ? 'I link degli agenti verso questo progetto verranno aggiornati.'
               : attachment
                 ? `L'estensione ${ext} resta invariata. I link che puntano al file non vengono aggiornati.`
-                : 'Minuscole e trattini. Niente spazi.'}
+                : 'Spazi e punti ammessi. Niente barre né : * ? " < > |'}
         </Text>
       </ScrollView>
     </>

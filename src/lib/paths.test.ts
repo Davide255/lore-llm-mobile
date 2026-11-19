@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { fromWire, parseProjectKey, projectLabel, resolveWikiTarget, teamOf, teamProjectKey, toWire } from './paths.ts';
+import { fromWire, nameFromTitle, parseProjectKey, projectLabel, resolveWikiTarget, teamOf, teamProjectKey, toWire, validateName } from './paths.ts';
 
 describe('team project keys', () => {
   it('builds and parses keys; personal projects have no team', () => {
@@ -38,5 +38,21 @@ describe('wiki links', () => {
     assert.equal(resolveWikiTarget('P/index.md', 'big-plan', files), 'P/plans/Big-Plan.md');
     assert.equal(resolveWikiTarget('Q/notes.md', 'index', files), null);
     assert.equal(resolveWikiTarget('P/index.md', 'missing', files), null);
+  });
+});
+
+describe('note and folder names', () => {
+  it('allows dots, spaces, capitals and accents', () => {
+    for (const n of ['8.equilibrio-chimico', '8. Equilibrio chimico', 'Gli stati della materia', 'v2.4 note', 'perché']) assert.equal(validateName(n), null, n);
+  });
+
+  it('refuses empty names, leading dots and what the server refuses', () => {
+    for (const n of ['', '   ', '.nascosto', '..', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', 'a\u0007b']) assert.notEqual(validateName(n), null, n);
+  });
+
+  it('turns a pasted heading into a name', () => {
+    assert.equal(nameFromTitle('  Equilibrio chimico: K e Q  '), 'Equilibrio chimico K e Q');
+    assert.equal(nameFromTitle('...Note 2.1'), 'Note 2.1');
+    assert.equal(nameFromTitle('a/b'), 'a b');
   });
 });

@@ -135,3 +135,16 @@ test('hasRichInline tells what is drawn (formulas, embeds) from what is typed', 
   assert.equal(hasRichInline('a [[wiki]] link and `$x$` code'), false);
   assert.equal(hasRichInline('plain text'), false);
 });
+
+test('bold may hold italic, and ***text*** is bold italic', () => {
+  assert.deepEqual(parseInline('**Nota *bene***'), [
+    { type: 'bold', children: [{ type: 'text', text: 'Nota ' }, { type: 'italic', children: [{ type: 'text', text: 'bene' }] }] },
+  ]);
+  assert.deepEqual(parseInline('***entrambi***'), [{ type: 'bold', children: [{ type: 'italic', children: [{ type: 'text', text: 'entrambi' }] }] }]);
+  assert.deepEqual(parseInline('a **b** c *d*').map((n) => n.type), ['text', 'bold', 'text', 'italic']);
+});
+
+test('headings may be indented by up to three spaces', () => {
+  assert.deepEqual(parse('   ## Titolo')[0], { type: 'heading', level: 2, text: 'Titolo', line: 0 });
+  assert.equal(parse('    # codice?')[0].type, 'paragraph');
+});
