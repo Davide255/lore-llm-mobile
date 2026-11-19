@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { NewFileTemplate } from '@/api';
-import { showActionSheet } from '@/components/action-sheet';
+import { folderLabel, pickedFolder } from '@/components/folder-picker';
 import { HeaderItems } from '@/components/header-items';
 import { Icon } from '@/components/icon';
 import { Banner, Cell, IconWell, Section, SectionHeader } from '@/components/ui';
-import { actions, attempt, useFolderTree } from '@/data/hooks';
+import { actions, attempt } from '@/data/hooks';
 import { firstHeading } from '@/lib/markdown';
 import { isProjectRoot, projectOf, slugify, validateSlug } from '@/lib/paths';
 import { routes } from '@/lib/routes';
@@ -38,12 +38,16 @@ export default function NewFileScreen() {
   const params = useLocalSearchParams<{ parent: string; kind?: 'file' | 'folder' | 'paste' }>();
   const kind = params.kind ?? 'file';
   const isFolder = kind === 'folder';
-  const [parent, setParent] = useState(params.parent);
+  // The folder picked in «Posizione» (pushed inside this modal), else where the + menu was opened.
+  const picked = pickedFolder.useValue();
+  const parent = picked && projectOf(picked) === projectOf(params.parent) ? picked : params.parent;
   const [name, setName] = useState('');
   const [template, setTemplate] = useState<NewFileTemplate>('empty');
   const [pasted, setPasted] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const tree = useFolderTree(projectOf(params.parent));
+
+  // A pick belongs to this modal only: forget it when the modal closes.
+  useEffect(() => () => pickedFolder.set(null), []);
 
   useEffect(() => {
     if (kind !== 'paste') return;
@@ -74,11 +78,7 @@ export default function NewFileScreen() {
     if (doc) router.replace(kind === 'paste' ? routes.file(doc.path) : routes.edit(doc.path));
   };
 
-  const pickLocation = () =>
-    showActionSheet({
-      title: 'Posizione',
-      options: (tree.data ?? [parent]).map((f) => ({ label: `${f}/`, onPress: () => setParent(f) })),
-    });
+  const pickLocation = () => router.push(routes.newFileFolder(projectOf(parent), parent));
 
   return (
     <>
@@ -114,10 +114,10 @@ export default function NewFileScreen() {
         <Section header="Posizione">
           <Cell
             icon={<IconWell name="folderFill" color={t.folder} filled />}
-            title={`${parent}/`}
+            title={folderLabel(parent)}
             mono
             subtitle={isProjectRoot(parent) ? 'Radice del progetto' : 'Cartella'}
-            right={<Icon name="chevronUpDown" size={14} color={t.textMuted} />}
+            chevron
             onPress={pickLocation}
           />
         </Section>

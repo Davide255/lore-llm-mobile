@@ -13,6 +13,9 @@ export const routes = {
   entry: (path: string, kind: 'file' | 'folder') => (kind === 'file' ? routes.file(path) : routes.folder(path)),
   newFile: (parent: string, kind: 'file' | 'folder' | 'paste' = 'file') =>
     ({ pathname: '/new-file', params: { parent, kind } }) as unknown as Href,
+  /** «Posizione» inside the new-file modal: the folder picker pushed on itself, one screen per folder. */
+  newFileFolder: (dir: string, current: string) =>
+    ({ pathname: '/new-file/folder', params: { dir, current } }) as unknown as Href,
   newProject: () => '/new-project' as Href,
   /** `reopen`: the caller is showing `path` and must follow it to its new location. */
   rename: (path: string, reopen = false) =>
