@@ -93,6 +93,12 @@ describe('setup draft', () => {
     assert.equal(studyKind('P/x/lezione.PDF'), 'pdf');
     assert.equal(studyKind('P/lavagna.jpg'), 'image');
     assert.equal(studyKind('P/logo.svg'), null);
+    assert.equal(studyKind('P/x/Tesi.DOCX'), 'office');
+    assert.equal(studyKind('P/voti.xlsx'), 'office');
+    assert.equal(studyKind('P/lezione.pptx'), 'office');
+    assert.equal(studyKind('P/old.doc'), null);
+    assert.equal(studyKind('P/old.ppt'), null);
+    assert.equal(studyKind('P/studio/slides.pptx'), null);
     assert.equal(studyKind('P/index.md'), null);
     assert.equal(studyKind('P/checklist.md'), null);
     assert.equal(studyKind('P/studio/2026-11-14-serie.md'), null);

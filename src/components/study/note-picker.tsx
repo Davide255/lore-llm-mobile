@@ -13,11 +13,11 @@ import { studyDraft } from '@/data/study';
 import { basename, dirname, projectLabel, projectOf } from '@/lib/paths';
 import { haptic } from '@/lib/haptics';
 import { routes } from '@/lib/routes';
-import { MAX_SOURCES, stepError, studyKind } from '@/lib/study-model';
+import { MAX_SOURCES, stepError, studyKind, type StudyKind } from '@/lib/study-model';
 import { useTheme } from '@/theme';
 
-type Kind = 'markdown' | 'pdf' | 'image';
-const KIND_LABELS: Record<Kind, string> = { markdown: 'Markdown', pdf: 'PDF', image: 'Foto' };
+type Kind = StudyKind;
+const KIND_LABELS: Record<Kind, string> = { markdown: 'Markdown', pdf: 'PDF', image: 'Foto', office: 'Office' };
 
 interface Folder {
   path: string;
@@ -29,7 +29,7 @@ interface Folder {
 /**
  * A2 — Step 1 of 3: which notes, browsed folder by folder. `dir` is the folder
  * shown (null: the root of the draft's project); opening a subfolder pushes this
- * same screen, so back/swipe climbs up. Markdown, PDFs and photos in one list;
+ * same screen, so back/swipe climbs up. Markdown, PDFs, photos and Office documents in one list;
  * the filter searches the whole subtree. Switching project keeps what was picked
  * elsewhere, so a session can mix notes of several projects. The report goes to
  * the project chosen at the root.
@@ -215,13 +215,13 @@ export function NotePicker({ dir }: { dir: string | null }) {
           <EmptyState
             icon="doc"
             title="Nessun appunto"
-            message={notes.length ? 'Nessun file corrisponde al filtro.' : isRoot ? 'Questo progetto non ha note, PDF o foto.' : 'Questa cartella non ha note, PDF o foto.'}
+            message={notes.length ? 'Nessun file corrisponde al filtro.' : isRoot ? 'Questo progetto non ha note, PDF, foto o documenti Office.' : 'Questa cartella non ha note, PDF, foto o documenti Office.'}
           />
         )}
 
         {isRoot ? (
           <Banner icon="scan" style={{ marginTop: 16 }}>
-            PDF e foto li legge direttamente l’AI: anche le formule scritte a mano contano come testo.
+            PDF e foto li legge direttamente l’AI: anche le formule scritte a mano contano come testo. Dei documenti Word, Excel e PowerPoint conta il testo.
           </Banner>
         ) : null}
       </Screen>

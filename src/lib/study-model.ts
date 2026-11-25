@@ -304,8 +304,15 @@ export function closedOutcome(q: Question, a: Answer | undefined): boolean | nul
   return null;
 }
 
-/** Notes the study mode can read: markdown, PDFs and photos (not SVG, not index.md/checklist.md, not its own reports). */
-export function studyKind(path: string): 'markdown' | 'pdf' | 'image' | null {
+/** What the study mode can read of a file: the kinds of `SourceKind` but «unsupported». */
+export type StudyKind = 'markdown' | 'pdf' | 'image' | 'office';
+
+/**
+ * Notes the study mode can read: markdown, PDFs, photos and Office documents (.docx, .xlsx, .pptx,
+ * whose text the server extracts); not SVG, not the legacy .doc/.xls/.ppt, not index.md/checklist.md,
+ * not its own reports.
+ */
+export function studyKind(path: string): StudyKind | null {
   const name = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
   const parts = path.split('/');
   if (parts[1] === 'studio') return null;
@@ -313,6 +320,7 @@ export function studyKind(path: string): 'markdown' | 'pdf' | 'image' | null {
   if (name.endsWith('.md')) return 'markdown';
   if (name.endsWith('.pdf')) return 'pdf';
   if (/\.(png|jpe?g|gif|webp)$/.test(name)) return 'image';
+  if (/\.(docx|xlsx|pptx)$/.test(name)) return 'office';
   return null;
 }
 

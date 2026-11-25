@@ -10,7 +10,7 @@ interface Stored {
   uploaded: string;
 }
 
-const ATTACHMENT_TYPE = /\.(png|jpe?g|gif|webp|svg|pdf)$/i;
+const ATTACHMENT_TYPE = /\.(png|jpe?g|gif|webp|svg|pdf|docx|xlsx|pptx)$/i;
 const isNote = (path: string) => path.toLowerCase().endsWith('.md');
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

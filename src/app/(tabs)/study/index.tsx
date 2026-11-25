@@ -165,7 +165,7 @@ export default function StudyScreen() {
         <Banner icon="index" style={{ marginTop: 20 }}>
           {saved.length
             ? 'Ogni sessione diventa un file .md nella cartella studio/ del progetto: index.md e gli agenti collegati lo vedono subito.'
-            : 'L’AI fa domande sui tuoi appunti (note .md, PDF e foto) e le valuta con i tuoi criteri. Il report finisce nella cartella studio/ del progetto.'}
+            : 'L’AI fa domande sui tuoi appunti (note .md, PDF, foto e documenti Word, Excel e PowerPoint) e le valuta con i tuoi criteri. Il report finisce nella cartella studio/ del progetto.'}
         </Banner>
       </Screen>
     </>

@@ -3,6 +3,7 @@ import type { ColorValue, StyleProp, ViewStyle } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
 
 import type { ProjectIcon } from '@/api';
+import { attachmentKind, officeApp } from '@/lib/attachments';
 
 /**
  * One semantic name → SF Symbol on iOS, Material Symbol on Android/web.
@@ -41,6 +42,10 @@ export const icons = {
   uploadFolder: { sf: 'arrow.up.folder', md: 'drive_folder_upload' },
   image: { sf: 'photo', md: 'image' },
   pdf: { sf: 'doc.richtext', md: 'picture_as_pdf' },
+  // Office documents: Word, Excel, PowerPoint
+  wordDoc: { sf: 'doc.plaintext', md: 'article' },
+  spreadsheet: { sf: 'tablecells', md: 'table_chart' },
+  slides: { sf: 'rectangle.on.rectangle.angled', md: 'slideshow' },
   warning: { sf: 'exclamationmark.triangle', md: 'warning' },
   rename: { sf: 'pencil.line', md: 'drive_file_rename_outline' },
   move: { sf: 'folder.badge.gearshape', md: 'drive_file_move' },
@@ -127,6 +132,14 @@ export const projectIcons: Record<ProjectIcon, IconName> = {
   design: 'design',
   rocket: 'rocket',
 };
+
+/** The glyph of a file by its type: image, PDF, Word, Excel, PowerPoint, or a note (anything else). */
+export function fileIcon(path: string): IconName {
+  const app = officeApp(path);
+  if (app) return app === 'word' ? 'wordDoc' : app === 'excel' ? 'spreadsheet' : 'slides';
+  const kind = attachmentKind(path);
+  return kind === 'pdf' ? 'pdf' : kind === 'image' ? 'image' : 'doc';
+}
 
 export function sf(name: IconName): SFSymbol {
   return icons[name].sf;

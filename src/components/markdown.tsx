@@ -11,7 +11,7 @@ import { attachmentKind } from '@/lib/attachments';
 import { findHeading, layoutBlocks, parse, parseInline, parseTable, type Block, type Embed, type Inline } from '@/lib/markdown';
 import { projectOf, resolveLink, resolveWikiTarget } from '@/lib/paths';
 import { routes } from '@/lib/routes';
-import { AttachmentImage, PdfCard } from './attachment';
+import { AttachmentImage, DocumentCard } from './attachment';
 import { showToast } from './toast';
 import { fonts, useTheme, type Theme } from '@/theme';
 import { useTextScale } from '@/theme/text-size';
@@ -251,7 +251,7 @@ function BlockContent({
     );
   };
   /**
-   * Like `prose`, but what stands on its own line (a `$$…$$` formula, an image or PDF `![[…]]`) is drawn
+   * Like `prose`, but what stands on its own line (a `$$…$$` formula, an image, PDF or Office `![[…]]`) is drawn
    * in place, centered between the text around it, whether the text is a paragraph, a list item or a quote.
    */
   const rich = (s: string, fontSize: number, baseLineHeight: number, color: ColorValue, style?: StyleProp<TextStyle>, box?: StyleProp<ViewStyle>) => {
@@ -340,7 +340,7 @@ function BlockContent({
   }
 }
 
-/** `![[image.png]]` shows the image, `![[doc.pdf]]` a card that opens it; anything else stays a link. */
+/** `![[image.png]]` shows the image, `![[doc.pdf]]` (or a .docx, .xlsx, .pptx) a card that opens it; anything else stays a link. */
 function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: Theme }) {
   const files = useContext(ProjectFiles);
   const styles = useMdStyles();
@@ -350,7 +350,7 @@ function EmbedBlock({ embeds, path, t }: { embeds: Embed[]; path: string; t: The
         const target = wikiTarget(path, files, e.target);
         const kind = target ? attachmentKind(target) : null;
         if (target && kind === 'image') return <AttachmentImage key={i} path={target} width={e.width} />;
-        if (target && kind === 'pdf') return <PdfCard key={i} path={target} />;
+        if (target && (kind === 'pdf' || kind === 'office')) return <DocumentCard key={i} path={target} />;
         return (
           <Text
             key={i}

@@ -4,14 +4,36 @@
  * attachments of these types of any size.
  */
 
-export const ATTACHMENT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf'] as const;
+import type { AttachmentKind } from './attachments';
+
+export const ATTACHMENT_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'docx', 'xlsx', 'pptx'] as const;
+export type AttachmentExtension = (typeof ATTACHMENT_EXTENSIONS)[number];
+
+/** The content type of each attachment type, as the Worker serves it (`ATTACHMENT_TYPES` in its paths.ts). */
+export const ATTACHMENT_MIME_TYPES: Record<AttachmentExtension, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
+/** Office documents (the Open XML ones only: legacy .doc/.xls/.ppt are not accepted). */
+const OFFICE_EXTENSIONS: readonly string[] = ['docx', 'xlsx', 'pptx'];
+
 export const MAX_NOTE_BYTES = 1024 * 1024;
 const MAX_PATH = 512;
 const MAX_SEGMENT = 128;
 /** One pick of a folder goes up in one go: a bigger tree would take forever and fill the list with rows. */
 export const MAX_FILES = 500;
 
-export const UNSUPPORTED_TYPE = 'Tipo non supportato (ammessi: immagini PNG, JPG, GIF, WebP, SVG, PDF e note .md)';
+export const UNSUPPORTED_TYPE =
+  'Tipo non supportato (ammessi: immagini PNG, JPG, GIF, WebP, SVG, PDF, documenti Word, Excel e PowerPoint .docx, .xlsx, .pptx e note .md)';
 
 export function extOf(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -21,9 +43,15 @@ export function extOf(name: string): string {
 export const isAttachment = (name: string) => (ATTACHMENT_EXTENSIONS as readonly string[]).includes(extOf(name));
 
 /** What an attachment is, for its icon and preview; null for notes. */
-export function attachmentKind(name: string): 'image' | 'pdf' | null {
+export function attachmentKind(name: string): AttachmentKind | null {
   if (!isAttachment(name)) return null;
-  return extOf(name) === 'pdf' ? 'pdf' : 'image';
+  const ext = extOf(name);
+  return ext === 'pdf' ? 'pdf' : OFFICE_EXTENSIONS.includes(ext) ? 'office' : 'image';
+}
+
+/** The content type an attachment goes up with; null for notes and unsupported types. */
+export function mimeType(name: string): string | null {
+  return isAttachment(name) ? ATTACHMENT_MIME_TYPES[extOf(name) as AttachmentExtension] : null;
 }
 
 /** Image types the app can draw itself (SVG cannot be drawn by the platform image view). */

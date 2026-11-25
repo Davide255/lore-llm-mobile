@@ -63,6 +63,26 @@ describe('uploading through the cloud client', () => {
     assert.match(sent.at(-1)!.url, /\/v1\/blob\?path=Proj%2Fimg%2Fphoto\.png$/);
     assert.ok(worker.has('', 'Proj/img/photo.png'));
     assert.ok(requests().includes('PUT /v1/blob?path=Proj/img/photo.png'));
+    assert.equal(sent.at(-1)!.headers['content-type'], 'image/png');
+  });
+
+  it('streams Word, Excel and PowerPoint files as attachments, each with its content type', async () => {
+    requests();
+    const types = {
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    };
+    for (const [ext, type] of Object.entries(types)) {
+      await kb.uploadFile(`Proj/office/lesson.${ext}`, { uri: `file:///lesson.${ext}`, size: 10 });
+      assert.equal(sent.at(-1)!.headers['content-type'], type);
+      assert.ok(worker.has('', `Proj/office/lesson.${ext}`));
+    }
+    assert.ok(requests().includes('PUT /v1/blob?path=Proj/office/lesson.docx'));
+    // Kept out of the notes: listed as files of the folder, never fetched as text.
+    const folder = await kb.listFolder('Proj/office');
+    assert.deepEqual(folder.files.map((f) => f.name).sort(), ['lesson.docx', 'lesson.pptx', 'lesson.xlsx']);
+    assert.ok(fileGets(requests()).every((g) => !/\.(docx|xlsx|pptx)$/.test(g)));
   });
 
   it('shows the attachment in its folder without downloading it, and keeps it out of the note count', async () => {

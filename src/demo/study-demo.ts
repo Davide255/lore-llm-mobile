@@ -46,7 +46,7 @@ const OPEN: Omit<Extract<Question, { type: 'open' }>, 'id' | 'source'>[] = [
 
 async function generate(req: GenerateRequest, emit: (e: StudyEvent) => void, wait: Wait) {
   for (const s of req.sources) {
-    const kind = s.path.endsWith('.md') ? 'markdown' : s.path.endsWith('.pdf') ? 'pdf' : 'image';
+    const kind = s.path.endsWith('.md') ? 'markdown' : s.path.endsWith('.pdf') ? 'pdf' : /\.(docx|xlsx|pptx)$/i.test(s.path) ? 'office' : 'image';
     emit({ event: 'file', data: { path: s.path, status: 'loading', kind } });
     await wait(500);
     emit({ event: 'file', data: { path: s.path, status: 'ready', kind, bytes: 4200 } });

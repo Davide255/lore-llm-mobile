@@ -1,16 +1,15 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Icon, type IconName } from './icon';
+import { fileIcon, Icon, type IconName } from './icon';
 import { Cell, IconWell, ProgressBar } from './ui';
 import { dismissUpload, retryUpload, type UploadItem } from '@/data/uploads';
 import { fileSize } from '@/lib/format';
-import { attachmentKind, percent } from '@/lib/upload-plan';
+import { percent } from '@/lib/upload-plan';
 import { useTheme } from '@/theme';
 
 function iconFor(item: UploadItem): IconName {
   if (item.kind === 'folder') return 'folderFill';
-  const kind = attachmentKind(item.name);
-  return kind === 'pdf' ? 'pdf' : kind === 'image' ? 'image' : 'doc';
+  return fileIcon(item.name);
 }
 
 /**

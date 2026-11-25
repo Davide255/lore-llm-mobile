@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { MAX_FILES, UNSUPPORTED_TYPE, cleanName, percent, planUpload, uniqueName } from './upload-plan.ts';
+import { MAX_FILES, UNSUPPORTED_TYPE, attachmentKind, cleanName, isAttachment, mimeType, percent, planUpload, uniqueName } from './upload-plan.ts';
 
 const none = () => false;
 const MB = 1024 * 1024;
@@ -19,6 +19,27 @@ describe('planUpload', () => {
       ['Proj/docs/scan.pdf', 'attachment'],
     ]);
     assert.deepEqual(plan.skipped, []);
+  });
+
+  it('accepts Word, Excel and PowerPoint documents as attachments, not the legacy formats', () => {
+    const plan = planUpload('P', [
+      { name: 'Tesi.docx', size: 2 * MB },
+      { name: 'voti.XLSX', size: 1 },
+      { name: 'lezione.pptx', size: 9 * MB },
+      { name: 'old.doc', size: 1 },
+      { name: 'old.xls', size: 1 },
+      { name: 'old.ppt', size: 1 },
+    ], none);
+    assert.deepEqual(plan.ok.map((f) => [f.rel, f.kind]), [
+      ['P/Tesi.docx', 'attachment'],
+      ['P/voti.XLSX', 'attachment'],
+      ['P/lezione.pptx', 'attachment'],
+    ]);
+    assert.deepEqual(plan.skipped.map((s) => [s.name, s.reason]), [
+      ['old.doc', UNSUPPORTED_TYPE],
+      ['old.xls', UNSUPPORTED_TYPE],
+      ['old.ppt', UNSUPPORTED_TYPE],
+    ]);
   });
 
   it('skips unsupported types, empty files and files over the limits, saying why', () => {
@@ -98,5 +119,31 @@ describe('names and progress', () => {
     assert.equal(percent(99.9, 100), 99);
     assert.equal(percent(150, 100), 100);
     assert.equal(percent(5, 0), 0);
+  });
+});
+
+describe('attachment types', () => {
+  it('tells images, PDFs and Office documents apart', () => {
+    assert.equal(attachmentKind('a.png'), 'image');
+    assert.equal(attachmentKind('a.svg'), 'image');
+    assert.equal(attachmentKind('a.PDF'), 'pdf');
+    assert.equal(attachmentKind('a.docx'), 'office');
+    assert.equal(attachmentKind('a.xlsx'), 'office');
+    assert.equal(attachmentKind('a.pptx'), 'office');
+    assert.equal(attachmentKind('a.md'), null);
+    assert.equal(attachmentKind('a.doc'), null);
+    assert.equal(isAttachment('P/x/a.pptx'), true);
+  });
+
+  it('gives each attachment the content type the Worker stores it with', () => {
+    assert.equal(mimeType('a.png'), 'image/png');
+    assert.equal(mimeType('a.JPG'), 'image/jpeg');
+    assert.equal(mimeType('a.svg'), 'image/svg+xml');
+    assert.equal(mimeType('a.pdf'), 'application/pdf');
+    assert.equal(mimeType('P/Tesi.docx'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    assert.equal(mimeType('P/voti.xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    assert.equal(mimeType('P/lezione.PPTX'), 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    assert.equal(mimeType('a.md'), null);
+    assert.equal(mimeType('a.doc'), null);
   });
 });

@@ -101,7 +101,8 @@ export interface SessionResult {
   topics: string[];
 }
 
-export type SourceKind = 'markdown' | 'pdf' | 'image' | 'unsupported';
+/** How the server read a source: Office documents (.docx, .xlsx, .pptx) arrive as their extracted text. */
+export type SourceKind = 'markdown' | 'pdf' | 'image' | 'office' | 'unsupported';
 
 export type StudyEvent =
   | { event: 'file'; data: { path: string; status: 'loading' | 'ready' | 'skipped'; kind: SourceKind; bytes?: number; reason?: string } }

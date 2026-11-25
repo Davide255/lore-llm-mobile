@@ -64,7 +64,7 @@ import {
   teamProjectKey,
   toWire,
 } from '@/lib/paths';
-import { isAttachment } from '@/lib/upload-plan';
+import { isAttachment, mimeType } from '@/lib/upload-plan';
 
 /**
  * The knowledge base in the user's cloud space (R2 behind the lore-llm
@@ -1084,7 +1084,8 @@ ${etag}`;
     let res: { status: number; body: string };
     try {
       res = await this.local.putBinary(url, source.uri, {
-        headers: { authorization: `Bearer ${token}` },
+        // The Worker stores the file with the type of its extension; the header just says the same.
+        headers: { authorization: `Bearer ${token}`, 'content-type': mimeType(path) ?? 'application/octet-stream' },
         onProgress: onProgress && ((sent, total) => onProgress(sent, total || source.size)),
         signal,
       });
