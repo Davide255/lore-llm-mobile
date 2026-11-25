@@ -281,13 +281,18 @@ export function Mono({ children, style }: { children: ReactNode; style?: StylePr
   return <Text style={[{ fontFamily: fonts.mono }, style]}>{children}</Text>;
 }
 
-export function EmptyState({ icon, title, message }: { icon: IconName; title: string; message?: string }) {
+export function EmptyState({ icon, title, message, action }: { icon: IconName; title: string; message?: string; action?: { label: string; onPress: () => void } }) {
   const t = useTheme();
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
       <Icon name={icon} size={34} color={t.textMuted} />
       <Text style={{ color: t.text, fontSize: 17, fontWeight: '600' }}>{title}</Text>
       {message ? <Text style={{ color: t.textSecondary, fontSize: 13, textAlign: 'center' }}>{message}</Text> : null}
+      {action ? (
+        <Pressable onPress={action.onPress} accessibilityRole="button" hitSlop={8} style={{ marginTop: 8 }}>
+          <Text style={{ color: t.accentText, fontSize: 16 }}>{action.label}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

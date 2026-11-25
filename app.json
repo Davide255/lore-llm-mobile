@@ -2,12 +2,12 @@
   "expo": {
     "name": "Lore LLM",
     "slug": "lore-llm",
-    "version": "2.4.7",
+    "version": "2.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/lore-llm-logo.png",
     "scheme": "lorellm",
     "userInterfaceStyle": "automatic",
-    "runtimeVersion": "2",
+    "runtimeVersion": "3",
     "updates": {
       "url": "https://www.athly.it/ota/lore/mobile/production/ios/manifest.json",
       "checkAutomatically": "NEVER",
@@ -59,7 +59,8 @@
       ],
       "expo-secure-store",
       "./plugins/with-scene-delegate",
-      "./plugins/with-runtime-version-check"
+      "./plugins/with-runtime-version-check",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

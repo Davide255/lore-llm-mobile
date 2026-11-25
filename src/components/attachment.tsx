@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, Share, Text, View } from 'react-native';
 
@@ -8,6 +9,7 @@ import { showToast } from './toast';
 import { kb, type AttachmentSource } from '@/api';
 import { basename } from '@/lib/paths';
 import { routes } from '@/lib/routes';
+import { mimeType } from '@/lib/upload-plan';
 import { useTheme } from '@/theme';
 
 /** The authenticated URL of an attachment, null while it is being prepared. */
@@ -25,27 +27,37 @@ export function useAttachmentSource(path: string): AttachmentSource | null {
   return loaded?.path === path ? loaded.source : null;
 }
 
-/** Attachments can be handed to other apps only on iOS for now (the share sheet takes a file URL there). */
-export const canShareAttachment = Platform.OS === 'ios';
+/**
+ * Attachments can be handed to other apps on iOS (React Native's share sheet takes a file URL) and on
+ * Android (expo-sharing turns the file into a content URI other apps may read). Not on the web.
+ */
+export const canShareAttachment = Platform.OS === 'ios' || Platform.OS === 'android';
 
 /**
  * Downloads an attachment (image, PDF or Office document) and hands the file to the system share
  * sheet, which can send it to another app, save it to Files or open it in a PDF reader or in
- * Word, Excel or PowerPoint. The copy keeps the attachment's name, so its type is known.
+ * Word, Excel or PowerPoint. The copy keeps the attachment's name, so its type is known; on
+ * Android the MIME type is passed too, which decides the apps offered.
  */
 export async function shareAttachment(path: string): Promise<void> {
+  const name = basename(path);
   if (!canShareAttachment) {
-    showToast({ icon: 'doc', subject: basename(path), message: "la condivisione dei file non è ancora disponibile su questo sistema" });
+    showToast({ icon: 'doc', subject: name, message: 'la condivisione dei file non è disponibile su questo sistema' });
     return;
   }
   try {
     const src = await kb.attachmentSource(path);
+    // The offline copy (app documents) or a fresh download to the cache: both folders are shareable on Android.
     const uri = src.uri.startsWith('file:')
       ? src.uri
-      : (await File.downloadFileAsync(src.uri, new File(Paths.cache, basename(path)), { headers: src.headers, idempotent: true })).uri;
-    await Share.share({ url: uri });
+      : (await File.downloadFileAsync(src.uri, new File(Paths.cache, name), { headers: src.headers, idempotent: true })).uri;
+    if (Platform.OS === 'android') {
+      await Sharing.shareAsync(uri, { mimeType: mimeType(name) ?? undefined, dialogTitle: `Apri «${name}» con…` });
+    } else {
+      await Share.share({ url: uri });
+    }
   } catch {
-    showToast({ icon: 'doc', subject: basename(path), message: 'impossibile condividere il file' });
+    showToast({ icon: 'doc', subject: name, message: 'impossibile condividere il file' });
   }
 }
 

@@ -17,7 +17,7 @@ import { ZoomableImage } from '@/components/zoomable-image';
 /**
  * An image (pinch or double tap to zoom, tap to hide the header) or a document attached to a project:
  * a PDF or a Word, Excel or PowerPoint file, shown in-app on iOS (with «Condividi» to open it in
- * another app) and otherwise handed to the system.
+ * another app); on Android «Apri con…» hands it to the share sheet (Word, Excel, a PDF reader…).
  */
 export default function AttachmentScreen() {
   const t = useTheme();
@@ -52,7 +52,7 @@ export default function AttachmentScreen() {
               await shareAttachment(path);
               setOpening(false);
             }}>
-            {opening ? <ActivityIndicator /> : <Text style={{ color: t.accentText, fontSize: 16 }}>{kind === 'pdf' ? 'Apri PDF' : 'Apri'}</Text>}
+            {opening ? <ActivityIndicator /> : <Text style={{ color: t.accentText, fontSize: 16 }}>Apri con…</Text>}
           </Pressable>
         </View>
       )}

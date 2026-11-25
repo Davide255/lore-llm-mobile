@@ -20,7 +20,8 @@ import { useTheme } from '@/theme';
  * An uploaded image, PDF or Office document (.docx, .xlsx, .pptx). Images are drawn straight from
  * the server (the request carries the sign-in token) and can be zoomed (pinch, double tap; a single
  * tap hides the header); PDFs and Office documents are shown on iOS, where «Condividi» opens them in
- * another app (Word, Excel, PowerPoint…); anything else gets a short explanation.
+ * another app (Word, Excel, PowerPoint…), and on Android go to the share sheet with «Apri con…»;
+ * anything else gets a short explanation.
  */
 export function AttachmentView({ path }: { path: string }) {
   const t = useTheme();
@@ -57,11 +58,19 @@ export function AttachmentView({ path }: { path: string }) {
         <ErrorState error={folder.error} onRetry={folder.refresh} />
       ) : isDocument && canPreviewDocument ? (
         <DocumentView path={path} />
+      ) : isDocument && canShareAttachment ? (
+        // Android: no in-app view for PDF and Office files, the share sheet opens them in another app.
+        <EmptyState
+          icon={fileIcon(name)}
+          title={name}
+          message="Si apre con un’altra app: Word, Excel, PowerPoint o un lettore PDF."
+          action={{ label: 'Apri con…', onPress: () => shareAttachment(path) }}
+        />
       ) : !preview ? (
         <EmptyState
           icon={fileIcon(name)}
           title="Anteprima non disponibile"
-          message="Il file è nella base e gli agenti possono leggerlo; per ora l’app mostra le immagini PNG, JPG, GIF e WebP e, su iPhone, i PDF e i documenti Word, Excel e PowerPoint."
+          message="Il file è nella base; per ora l’app mostra le immagini PNG, JPG, GIF e WebP e i PDF e i documenti Word, Excel e PowerPoint."
         />
       ) : failed ? (
         <EmptyState icon="warning" title="Impossibile caricare l’immagine" message="Controlla la connessione e riprova." />
