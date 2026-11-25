@@ -1,10 +1,10 @@
 {
   "baseUrl": "https://www.athly.it/ota/lore/mobile",
   "platform": "ios",
-  "runtimeVersion": "2",
+  "runtimeVersion": "3",
   "channels": [
     "beta",
     "production"
   ],
-  "nativeFingerprint": "6687d01d71a70743fbc40069a02f21caaa7312f1789c90219f36ceebccb0684d"
+  "nativeFingerprint": "99a330d1ef5870f70d2cc2d7ce6f430b3b3306b6b54dfdfcef90dcf313091e5b"
 }

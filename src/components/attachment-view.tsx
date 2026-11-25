@@ -5,7 +5,8 @@ import { Platform, View } from 'react-native';
 import { canShareAttachment, shareAttachment } from './attachment';
 import { useHeaderToggle } from './auto-hide-header';
 import { HeaderItems } from './header-items';
-import { PdfView, canPreviewPdf } from './pdf-view';
+import { DocumentView, canPreviewDocument } from './document-view';
+import { fileIcon } from './icon';
 import { EmptyState, ErrorState, HeaderTitle, Loading } from './ui';
 import { ZoomableImage } from './zoomable-image';
 import { kb } from '@/api';
@@ -16,16 +17,19 @@ import { attachmentKind, isPreviewableImage } from '@/lib/upload-plan';
 import { useTheme } from '@/theme';
 
 /**
- * An uploaded image or PDF. Images are drawn straight from the server (the request carries the
- * sign-in token) and can be zoomed (pinch, double tap; a single tap hides the header); PDFs are
- * shown on iOS; anything else gets a short explanation.
+ * An uploaded image, PDF or Office document (.docx, .xlsx, .pptx). Images are drawn straight from
+ * the server (the request carries the sign-in token) and can be zoomed (pinch, double tap; a single
+ * tap hides the header); PDFs and Office documents are shown on iOS, where «Condividi» opens them in
+ * another app (Word, Excel, PowerPoint…), and on Android go to the share sheet with «Apri con…»;
+ * anything else gets a short explanation.
  */
 export function AttachmentView({ path }: { path: string }) {
   const t = useTheme();
   const name = path.split('/').pop() ?? '';
   const folder = useFolder(dirname(path));
   const entry = folder.data?.files.find((f) => f.path === path);
-  const isPdf = attachmentKind(name) === 'pdf';
+  const kind = attachmentKind(name);
+  const isDocument = kind === 'pdf' || kind === 'office';
   const preview = Platform.OS !== 'web' && isPreviewableImage(name);
   const [source, setSource] = useState<{ uri: string; headers: Record<string, string> } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -52,13 +56,21 @@ export function AttachmentView({ path }: { path: string }) {
         <Loading />
       ) : folder.error ? (
         <ErrorState error={folder.error} onRetry={folder.refresh} />
-      ) : isPdf && canPreviewPdf ? (
-        <PdfView path={path} />
+      ) : isDocument && canPreviewDocument ? (
+        <DocumentView path={path} />
+      ) : isDocument && canShareAttachment ? (
+        // Android: no in-app view for PDF and Office files, the share sheet opens them in another app.
+        <EmptyState
+          icon={fileIcon(name)}
+          title={name}
+          message="Si apre con un’altra app: Word, Excel, PowerPoint o un lettore PDF."
+          action={{ label: 'Apri con…', onPress: () => shareAttachment(path) }}
+        />
       ) : !preview ? (
         <EmptyState
-          icon={isPdf ? 'pdf' : 'image'}
+          icon={fileIcon(name)}
           title="Anteprima non disponibile"
-          message="Il file è nella base e gli agenti possono leggerlo; per ora l’app mostra le immagini PNG, JPG, GIF e WebP e, su iPhone, i PDF."
+          message="Il file è nella base; per ora l’app mostra le immagini PNG, JPG, GIF e WebP e i PDF e i documenti Word, Excel e PowerPoint."
         />
       ) : failed ? (
         <EmptyState icon="warning" title="Impossibile caricare l’immagine" message="Controlla la connessione e riprova." />

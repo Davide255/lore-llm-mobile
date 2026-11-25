@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import { useHeaderToggle } from '@/components/auto-hide-header';
-import { Icon } from '@/components/icon';
-import { openPdf, useAttachmentSource } from '@/components/attachment';
+import { fileIcon, Icon } from '@/components/icon';
+import { shareAttachment, useAttachmentSource } from '@/components/attachment';
+import { DocumentView, canPreviewDocument } from '@/components/document-view';
 import { HeaderItems } from '@/components/header-items';
-import { PdfView, canPreviewPdf } from '@/components/pdf-view';
 import { HeaderTitle } from '@/components/ui';
 import { attachmentKind } from '@/lib/attachments';
 import { basename } from '@/lib/paths';
@@ -14,7 +14,11 @@ import { pathParam } from '@/lib/routes';
 import { useTheme } from '@/theme';
 import { ZoomableImage } from '@/components/zoomable-image';
 
-/** An image (pinch or double tap to zoom, tap to hide the header) or a PDF (shown in-app on iOS, otherwise opened by the system) attached to a project. */
+/**
+ * An image (pinch or double tap to zoom, tap to hide the header) or a document attached to a project:
+ * a PDF or a Word, Excel or PowerPoint file, shown in-app on iOS (with «Condividi» to open it in
+ * another app); on Android «Apri con…» hands it to the share sheet (Word, Excel, a PDF reader…).
+ */
 export default function AttachmentScreen() {
   const t = useTheme();
   const path = pathParam(useLocalSearchParams<{ path: string[] }>().path);
@@ -32,23 +36,23 @@ export default function AttachmentScreen() {
         ) : (
           <ActivityIndicator style={{ flex: 1 }} />
         )
-      ) : canPreviewPdf ? (
+      ) : canPreviewDocument ? (
         <>
-          <HeaderItems right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => openPdf(path) }]} />
-          <PdfView path={path} />
+          <HeaderItems right={[{ kind: 'button', label: 'Condividi', icon: 'share', onPress: () => shareAttachment(path) }]} />
+          <DocumentView path={path} />
         </>
       ) : (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, padding: 32 }}>
-          <Icon name="doc" size={44} color={t.accentText} />
+          <Icon name={fileIcon(path)} size={44} color={t.accentText} />
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>{basename(path)}</Text>
           <Pressable
             disabled={opening}
             onPress={async () => {
               setOpening(true);
-              await openPdf(path);
+              await shareAttachment(path);
               setOpening(false);
             }}>
-            {opening ? <ActivityIndicator /> : <Text style={{ color: t.accentText, fontSize: 16 }}>Apri PDF</Text>}
+            {opening ? <ActivityIndicator /> : <Text style={{ color: t.accentText, fontSize: 16 }}>Apri con…</Text>}
           </Pressable>
         </View>
       )}

@@ -3,7 +3,7 @@ import { ActivityIndicator, Keyboard, Platform, Pressable, StyleSheet, Text, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { QuestionResult, QuestionType } from '@/api/study/types';
-import { Icon, type IconName } from '@/components/icon';
+import { fileIcon, Icon, type IconName } from '@/components/icon';
 import { IconWell } from '@/components/ui';
 import { haptic } from '@/lib/haptics';
 import { studyKind, TYPE_LABELS } from '@/lib/study-model';
@@ -15,7 +15,7 @@ export const TYPE_ICONS: Record<QuestionType, IconName> = { mc: 'multipleChoice'
 
 export function sourceIcon(path: string): IconName {
   const k = studyKind(path);
-  return k === 'pdf' ? 'pdf' : k === 'image' ? 'image' : 'doc';
+  return k === 'pdf' || k === 'image' || k === 'office' ? fileIcon(path) : 'doc';
 }
 
 /** «− 4 +» */

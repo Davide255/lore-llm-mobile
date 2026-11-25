@@ -12,7 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { Project, SearchHit, SearchResponse } from '@/api';
-import { Icon, type IconName } from '@/components/icon';
+import { fileIcon, Icon, type IconName } from '@/components/icon';
 import { actions, useRecentSearches, useSearch, useStars } from '@/data/hooks';
 import { plural } from '@/lib/format';
 import { projectLabel, teamOf } from '@/lib/paths';
@@ -93,7 +93,7 @@ function Snippet({ hit, t, lines = 2 }: { hit: SearchHit; t: Theme; lines?: numb
 function hitIcon(hit: SearchHit, t: Theme): { name: IconName; color: string; well: string } {
   if (hit.role === 'index') return { name: 'index', color: t.info, well: t.infoWell };
   if (hit.role === 'checklist') return { name: 'checklist', color: t.accentText, well: t.accentWell };
-  return { name: 'doc', color: t.textSecondary, well: t.fill };
+  return { name: fileIcon(hit.path), color: t.textSecondary, well: t.fill };
 }
 
 // ─── Recent searches ─────────────────────────────────────────────────────────

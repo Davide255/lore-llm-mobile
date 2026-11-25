@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { findHeading, hasRichInline, layoutBlocks, parse, splitDisplayMath, parseInline, plainText, serialize, toggleTaskAtLine, type Block } from './markdown.ts';
 import { texToSvg } from './math.ts';
+import { attachmentKind } from './attachments.ts';
 
 const mathOf = (src: string) => parseInline(src).filter((n) => n.type === 'math');
 
@@ -125,6 +126,22 @@ test('layoutBlocks puts formulas and image/PDF embeds on their own, in the middl
   );
   assert.deepEqual(layoutBlocks('plain', isFile), [{ type: 'text', text: 'plain' }]);
   assert.deepEqual(layoutBlocks('`![[a.png]]` stays code', isFile), [{ type: 'text', text: '`![[a.png]]` stays code' }]);
+});
+
+test('layoutBlocks sets Office embeds apart like PDFs (a card), and leaves legacy formats as text', () => {
+  const pieces = layoutBlocks('Vedi ![[Tesi.docx]] e ![[slides/lezione 1.pptx]] poi ![[voti.xlsx]] ma non ![[old.doc]]', attachmentKind);
+  assert.deepEqual(
+    pieces.map((p) => (p.type === 'embed' ? ['embed', p.embed.target, attachmentKind(p.embed.target)] : [p.type, p.text])),
+    [
+      ['text', 'Vedi'],
+      ['embed', 'Tesi.docx', 'office'],
+      ['text', 'e'],
+      ['embed', 'slides/lezione 1.pptx', 'office'],
+      ['text', 'poi'],
+      ['embed', 'voti.xlsx', 'office'],
+      ['text', 'ma non ![[old.doc]]'],
+    ],
+  );
 });
 
 test('hasRichInline tells what is drawn (formulas, embeds) from what is typed', () => {

@@ -7,7 +7,7 @@ import type { Entry, Project } from '@/api';
 import { authUser } from '@/auth/session';
 import { showActionSheet } from './action-sheet';
 import { entryMenu } from './entry-actions';
-import { Icon, projectIcons, type IconName } from './icon';
+import { fileIcon, Icon, projectIcons, type IconName } from './icon';
 import { AgentAvatar, initialsOf } from './identity';
 import { Pill } from './ui';
 import { useActivity, useAgents, useFolder, useProjects, useStars } from '@/data/hooks';
@@ -262,8 +262,8 @@ function EntryNode({ entry: e, depth, ...tree }: { entry: Entry; depth: number }
       <Icon name="index" size={16} color={t.info} />
     ) : e.role === 'checklist' ? (
       <Icon name="checklist" size={16} color={t.accentText} />
-    ) : kind === 'pdf' || kind === 'image' ? (
-      <Icon name={kind === 'pdf' ? 'pdf' : 'image'} size={16} color={t.folder} />
+    ) : kind ? (
+      <Icon name={fileIcon(e.name)} size={16} color={t.folder} />
     ) : (
       <Icon name="doc" size={16} color={t.textMuted} />
     );

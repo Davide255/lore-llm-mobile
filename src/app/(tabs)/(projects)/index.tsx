@@ -9,7 +9,7 @@ import { GlobalSearchResults, RecentSearches, useDebounced } from '@/components/
 import { HeaderItems } from '@/components/header-items';
 import { PendingInvites } from '@/components/invites';
 import { ProjectGrid } from '@/components/project-card';
-import { Icon, projectIcons } from '@/components/icon';
+import { fileIcon, Icon, projectIcons } from '@/components/icon';
 import { Cell, EmptyState, ErrorState, IconWell, Loading, Pill, ProgressBar, Screen, Section, SectionHeader } from '@/components/ui';
 import { actions, attempt, useMyInvites, useProjects, useRecentFiles, useStars, useSummary } from '@/data/hooks';
 import { plural, relativeTime } from '@/lib/format';
@@ -179,7 +179,7 @@ export default function ProjectsScreen() {
                   {starredNotes.map((n) => (
                     <Cell
                       key={n.path}
-                      icon={<IconWell name="doc" />}
+                      icon={<IconWell name={fileIcon(n.path)} />}
                       title={basename(n.path)}
                       mono
                       subtitle={projectLabel(n.path)}
@@ -196,7 +196,7 @@ export default function ProjectsScreen() {
                   {recent.data.map((r) => (
                     <Cell
                       key={r.path}
-                      icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : 'doc'} />}
+                      icon={<IconWell name={r.role === 'index' ? 'index' : r.role === 'checklist' ? 'checklist' : fileIcon(r.path)} />}
                       title={r.name}
                       mono
                       subtitle={projectLabel(r.project)}
